@@ -30,5 +30,5 @@ Because the image contains a modified copy of a GPL-3.0 program, the image as
 a whole is distributed under the terms of the GPL-3.0. The licence of the App
 layer's own files is stated in its source repository.
 
-The icon and logo of the App (`icon.png`, `logo.png`) are unmodified copies
-of the upstream artwork `carte-live/public/icone-192.png`.
+The icon and logo of the App (`icon.png`, `logo.png`) are rendered from
+`assets/icon.svg` and `assets/wordmark.svg` in the App's source repository.
