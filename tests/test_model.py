@@ -69,13 +69,16 @@ def test_node_type():
 
 
 def test_advert_time():
-    assert model.advert_time(1795000000, NOW) == "2026-11-18T11:06:40+00:00"
-    assert model.advert_time(1795000000.9, NOW) == "2026-11-18T11:06:40+00:00"
-    for value in (0, -1, 12345, None, "1795000000", True, float("nan")):
-        assert model.advert_time(value, NOW) is None
-    assert model.advert_time(NOW + 3600, NOW) is not None
-    assert model.advert_time(NOW + 2 * 86400, NOW) is None
-    assert model.advert_time(4102444800, NOW) is None
+    assert model.advert_time(1795000000) == "2026-11-18T11:06:40+00:00"
+    assert model.advert_time(1795000000.9) == "2026-11-18T11:06:40+00:00"
+    for value in (None, 0, -5, "1795000000", True, float("nan"), 10**15):
+        assert model.advert_time(value) is None
+
+
+def test_advert_time_is_passed_on_as_reported():
+    assert model.advert_time(86400) == "1970-01-02T00:00:00+00:00"
+    assert model.advert_time(NOW + 2 * 86400) is not None
+    assert model.advert_time(4102444800) == "2100-01-01T00:00:00+00:00"
 
 
 def test_split_hops_by_hash_mode():
@@ -95,7 +98,7 @@ def test_split_hops_rejects_bad_input():
 
 
 def test_normalise_contact():
-    node = model.normalise_contact(contact(A.upper(), adv_name=" Hill "), NOW)
+    node = model.normalise_contact(contact(A.upper(), adv_name=" Hill "))
     assert node == {
         "public_key": A,
         "pubkey_prefix": A[:12],
@@ -113,13 +116,13 @@ def test_normalise_contact():
 
 
 def test_normalise_contact_without_position_or_extras():
-    node = model.normalise_contact({"public_key": A}, NOW)
+    node = model.normalise_contact({"public_key": A})
     assert node["lat"] is None and node["lon"] is None
     assert node["name"] == ""
     assert node["type"] == "unknown"
     assert node["added_to_node"] is False
     assert node["last_advert"] is None
-    unset = model.normalise_contact(contact(A, adv_lat=0.0, adv_lon=0.0), NOW)
+    unset = model.normalise_contact(contact(A, adv_lat=0.0, adv_lon=0.0))
     assert unset["lat"] is None and unset["lon"] is None
 
 
@@ -134,7 +137,7 @@ def test_normalise_contact_rejects_bad_records():
 def test_route_none_and_direct():
     nodes = by_key(
         model.build_nodes(
-            [contact(A), contact(B, out_path_len=0, out_path_hash_mode=0)], now=NOW
+            [contact(A), contact(B, out_path_len=0, out_path_hash_mode=0)]
         )
     )
     assert nodes[A]["route"] == {"state": "none", "hops": []}
@@ -144,15 +147,13 @@ def test_route_none_and_direct():
 def test_route_missing_length_is_none():
     record = contact(A)
     del record["out_path_len"]
-    assert model.build_nodes([record], now=NOW)[0]["route"]["state"] == "none"
+    assert model.build_nodes([record])[0]["route"]["state"] == "none"
 
 
 def test_route_resolved_keeps_hop_order():
     target = contact(C, out_path_len=2, out_path="b2a1", out_path_hash_mode=0, type=1)
     nodes = by_key(
-        model.build_nodes(
-            [contact(A), contact(B, adv_lat=0, adv_lon=0), target], now=NOW
-        )
+        model.build_nodes([contact(A), contact(B, adv_lat=0, adv_lon=0), target])
     )
     route = nodes[C]["route"]
     assert route["state"] == "resolved"
@@ -164,7 +165,7 @@ def test_route_resolved_keeps_hop_order():
 
 def test_route_unresolved_when_hop_unknown():
     target = contact(C, out_path_len=2, out_path="a1ee", out_path_hash_mode=0)
-    route = by_key(model.build_nodes([contact(A), target], now=NOW))[C]["route"]
+    route = by_key(model.build_nodes([contact(A), target]))[C]["route"]
     assert route["state"] == "unresolved"
     assert route["hops"][0]["public_key"] == A
     assert route["hops"][1] == {
@@ -178,9 +179,7 @@ def test_route_unresolved_when_hop_unknown():
 
 def test_route_unresolved_when_hop_ambiguous():
     target = contact(C, out_path_len=1, out_path="a1", out_path_hash_mode=0)
-    route = by_key(model.build_nodes([contact(A), contact(D), target], now=NOW))[C][
-        "route"
-    ]
+    route = by_key(model.build_nodes([contact(A), contact(D), target]))[C]["route"]
     assert route["state"] == "unresolved"
     assert route["hops"] == [
         {"hash": "a1", "public_key": None, "name": None, "lat": None, "lon": None}
@@ -189,23 +188,21 @@ def test_route_unresolved_when_hop_ambiguous():
 
 def test_route_wider_hash_resolves_ambiguity():
     target = contact(C, out_path_len=1, out_path="a1ff", out_path_hash_mode=1)
-    route = by_key(model.build_nodes([contact(A), contact(D), target], now=NOW))[C][
-        "route"
-    ]
+    route = by_key(model.build_nodes([contact(A), contact(D), target]))[C]["route"]
     assert route["state"] == "resolved"
     assert route["hops"][0]["public_key"] == D
 
 
 def test_route_three_byte_hashes():
     target = contact(A, out_path_len=1, out_path="c4d5e6", out_path_hash_mode=2)
-    route = by_key(model.build_nodes([contact(C), target], now=NOW))[A]["route"]
+    route = by_key(model.build_nodes([contact(C), target]))[A]["route"]
     assert route["state"] == "resolved"
     assert route["hops"][0]["hash"] == "c4d5e6"
 
 
 def test_route_does_not_match_the_contact_itself():
     target = contact(A, out_path_len=1, out_path="a1", out_path_hash_mode=0)
-    route = model.build_nodes([target], now=NOW)[0]["route"]
+    route = model.build_nodes([target])[0]["route"]
     assert route["state"] == "unresolved"
     assert route["hops"][0]["public_key"] is None
 
@@ -217,9 +214,7 @@ def test_route_malformed_path_is_unresolved():
         {"out_path": None, "out_path_len": 1, "out_path_hash_mode": 0},
         {"out_path": "a1" * 80, "out_path_len": 80, "out_path_hash_mode": 0},
     ):
-        route = model.build_nodes([contact(A), contact(C, **extra)], now=NOW)[1][
-            "route"
-        ]
+        route = model.build_nodes([contact(A), contact(C, **extra)])[1]["route"]
         assert route == {"state": "unresolved", "hops": []}
 
 
@@ -231,7 +226,7 @@ def test_build_nodes_adds_heard_data_and_sorts():
             "last_hop_count": 2,
         }
     }
-    nodes = model.build_nodes([contact(B), contact(A)], heard, NOW)
+    nodes = model.build_nodes([contact(B), contact(A)], heard)
     assert [node["public_key"] for node in nodes] == [A, B]
     assert nodes[0]["last_heard"] is None
     assert nodes[1]["last_heard"] == "2026-11-18T06:00:00+00:00"
@@ -240,7 +235,5 @@ def test_build_nodes_adds_heard_data_and_sorts():
 
 
 def test_build_nodes_skips_bad_records_and_duplicates():
-    nodes = model.build_nodes(
-        [contact(A), "junk", {"adv_name": "x"}, contact(A)], now=NOW
-    )
+    nodes = model.build_nodes([contact(A), "junk", {"adv_name": "x"}, contact(A)])
     assert len(nodes) == 1

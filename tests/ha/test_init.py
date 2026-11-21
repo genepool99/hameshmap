@@ -1,5 +1,6 @@
 """Setup, unload, panel, WebSocket and diagnostics tests."""
 
+import hashlib
 from datetime import timedelta
 
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
@@ -18,7 +19,7 @@ EVENTS = ("meshcore_message", "meshcore_connected", "meshcore_disconnected")
 PANELS = "frontend_panels"
 
 
-async def test_panel_is_registered(hass, meshcore, setup_map, hass_client):
+async def test_panel_is_registered(hass, meshcore, setup_map, hass_client, bundle):
     meshcore.add_entry("Base", [])
     await setup_map()
     registered = hass.data[PANELS]["meshcore-map"]
@@ -26,14 +27,28 @@ async def test_panel_is_registered(hass, meshcore, setup_map, hass_client):
     assert registered.sidebar_title == "MeshMap"
     assert registered.sidebar_icon == "mdi:map-marker-radius"
     assert registered.require_admin is False
+    digest = hashlib.sha256(bundle.read_bytes()).hexdigest()[:12]
+    module_url = f"/meshcore_map_panel/meshcore-map-panel.js?v=0.1.0-{digest}"
     assert registered.config["_panel_custom"] == {
         "name": "meshcore-map-panel",
-        "module_url": "/meshcore_map_panel/meshcore-map-panel.js?v=0.1.0",
+        "module_url": module_url,
     }
     client = await hass_client()
-    response = await client.get("/meshcore_map_panel/meshcore-map-panel.js?v=0.1.0")
+    response = await client.get(module_url)
     assert response.status == 200
     assert "test bundle" in await response.text()
+
+
+async def test_module_url_changes_with_the_bundle(hass, meshcore, setup_map, bundle):
+    meshcore.add_entry("Base", [])
+    entry = await setup_map()
+    first = hass.data[PANELS]["meshcore-map"].config["_panel_custom"]["module_url"]
+    bundle.write_text("// changed bundle")
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    second = hass.data[PANELS]["meshcore-map"].config["_panel_custom"]["module_url"]
+    assert first != second
+    assert first.split("?v=")[1].startswith("0.1.0-")
 
 
 async def test_missing_bundle_still_sets_up(hass, meshcore, setup_map, bundle, caplog):

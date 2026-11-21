@@ -4,9 +4,13 @@ import { STYLE } from "./styles.js";
 import { S } from "./strings.js";
 import { ICONS, shapeSvg } from "./icons.js";
 import {
+  advertClock,
   FRESHNESS,
+  POSITIONS,
+  SORTS,
   TYPES,
   filterItems,
+  sortItems,
   flattenNodes,
   formatAge,
   hasPosition,
@@ -43,7 +47,8 @@ class MeshcoreMapPanel extends HTMLElement {
     this._error = null;
     this._entryId = null;
     this._selected = null;
-    this._filters = { search: "", type: "", fresh: "" };
+    this._filters = { search: "", type: "", fresh: "", position: "" };
+    this._sort = "name";
     this._drawerOpen = false;
     this._entriesKey = null;
   }
@@ -71,7 +76,7 @@ class MeshcoreMapPanel extends HTMLElement {
 
   connectedCallback() {
     this._build();
-    this._mapView = new MapView(this._el.map, (key) => this._select(key, false));
+    this._mapView = new MapView(this._el.map, (key) => this._select(key, false), this._el.legend);
     this._resizeObserver = new ResizeObserver(() => this._mapView.resized());
     this._resizeObserver.observe(this._el.map);
     this._timer = setInterval(() => this._render(), 60000);
@@ -140,6 +145,23 @@ class MeshcoreMapPanel extends HTMLElement {
       option("", S.allAges),
       ...FRESHNESS.map((fresh) => option(fresh, S.fresh[fresh])),
     );
+    el.position = h(
+      "select",
+      { "aria-label": S.positionFilter, onchange: () => this._setFilter("position", el.position.value) },
+      option("", S.allPositions),
+      ...POSITIONS.map((position) => option(position, S.positions[position])),
+    );
+    el.sort = h(
+      "select",
+      {
+        "aria-label": S.sortBy,
+        onchange: () => {
+          this._sort = el.sort.value;
+          this._render();
+        },
+      },
+      ...SORTS.map((sort) => option(sort, S.sorts[sort])),
+    );
     el.counts = h("div", { class: "counts", role: "status" });
     el.list = h("ul", { class: "list", "aria-label": S.nodeList });
     const legendItem = (type, fresh, label) => h("li", null, shape(type, fresh), label);
@@ -147,22 +169,32 @@ class MeshcoreMapPanel extends HTMLElement {
       "details",
       { class: "legend" },
       h("summary", null, S.legend),
+      h("p", null, S.legendHint),
       h(
         "ul",
         null,
         ...TYPES.map((type) => legendItem(type, "fresh", S.types[type])),
         legendItem("companion", "fresh", S.companion),
-        ...FRESHNESS.map((fresh) => legendItem("client", fresh, S.fresh[fresh])),
+      ),
+      h(
+        "ul",
+        null,
+        ...FRESHNESS.map((fresh) => legendItem("client", fresh, `${S.fresh[fresh]} (${S.freshHint[fresh]})`)),
+      ),
+      h(
+        "ul",
+        null,
+        h("li", null, h("span", { class: "mm-cluster legend-cluster" }, "5"), S.cluster),
+        h("li", null, h("span", { class: "legend-route" }), S.legendRoute),
       ),
     );
     el.details = h("section", { class: "details", "aria-label": S.details, hidden: true });
     el.aside = h(
       "aside",
       { "aria-label": S.nodes },
-      h("div", { class: "filters" }, el.search, el.type, el.fresh),
+      h("div", { class: "filters" }, el.search, el.type, el.fresh, el.position, el.sort),
       el.counts,
       el.list,
-      el.legend,
     );
 
     this.shadowRoot.replaceChildren(
@@ -267,6 +299,10 @@ class MeshcoreMapPanel extends HTMLElement {
     el.listToggle.setAttribute("aria-expanded", String(this._drawerOpen));
     const parent = this._narrow ? el.main : el.aside;
     if (el.details.parentNode !== parent) parent.append(el.details);
+    if (!this._legendSet) {
+      this._legendSet = true;
+      el.legend.open = !this._narrow;
+    }
     this._renderMenu();
   }
 
@@ -281,7 +317,7 @@ class MeshcoreMapPanel extends HTMLElement {
     if (this._entryId && !entries.some((entry) => entry.entry_id === this._entryId)) this._entryId = null;
 
     const all = flattenNodes(entries, this._entryId, this._data?.stale_after_hours ?? 24, now);
-    const items = filterItems(all, this._filters);
+    const items = sortItems(filterItems(all, this._filters), this._sort);
     if (this._selected && !items.some((item) => item.key === this._selected)) this._selected = null;
     const selected = items.find((item) => item.key === this._selected) || null;
     const shown = entries.filter((entry) => !this._entryId || entry.entry_id === this._entryId);
@@ -290,7 +326,7 @@ class MeshcoreMapPanel extends HTMLElement {
     this._renderEntrySelect(entries);
     this._renderStatus(shown, now);
     this._renderBanner(entries, all);
-    this._renderList(items, all, entries.length > 1 && !this._entryId);
+    this._renderList(items, all, entries.length > 1 && !this._entryId, now);
     this._renderDetails(selected, entries.length > 1, now);
     if (focusId) this.shadowRoot.querySelector(`[data-focus-id="${CSS.escape(focusId)}"]`)?.focus();
 
@@ -354,7 +390,7 @@ class MeshcoreMapPanel extends HTMLElement {
     }
   }
 
-  _renderList(items, all, showEntry) {
+  _renderList(items, all, showEntry, now) {
     const el = this._el;
     const located = items.filter((item) => item.located).length;
     el.counts.textContent =
@@ -367,7 +403,9 @@ class MeshcoreMapPanel extends HTMLElement {
     }
     el.list.replaceChildren(
       ...items.map((item) => {
+        const name = item.node.name || item.node.pubkey_prefix;
         const sub = [S.types[item.type], S.fresh[item.fresh].toLowerCase()];
+        if (item.seen !== null) sub.push(formatAge(new Date(item.seen).toISOString(), now));
         if (showEntry) sub.push(item.entry.title);
         return h(
           "li",
@@ -375,8 +413,9 @@ class MeshcoreMapPanel extends HTMLElement {
           h(
             "button",
             {
-              class: "item",
+              class: item.located ? "item" : "item unmapped",
               type: "button",
+              title: name,
               "data-focus-id": item.key,
               "aria-current": item.key === this._selected ? "true" : null,
               onclick: () => this._select(item.key, true),
@@ -385,7 +424,7 @@ class MeshcoreMapPanel extends HTMLElement {
             h(
               "span",
               { class: "text" },
-              h("span", { class: "name" }, item.node.name || item.node.pubkey_prefix),
+              h("span", { class: "name" }, name),
               h("span", { class: "sub" }, sub.join(" · ")),
             ),
             item.located ? null : h("span", { class: "badge" }, S.noPosition),
@@ -409,6 +448,14 @@ class MeshcoreMapPanel extends HTMLElement {
       return `${new Date(iso).toLocaleString(this._hass?.locale?.language)} (${age})`;
     };
     const row = (label, ...value) => [h("dt", null, label), h("dd", null, ...value)];
+    // Reported advert time, with a note when the node clock is ahead or not set.
+    const advertCell = () => {
+      const clock = advertClock(node, now);
+      if (clock === "none") return [S.never];
+      const cell = [when(node.last_advert), " ", h("span", { class: "note" }, S.lastAdvertNote)];
+      if (clock !== "ok") cell.push(h("div", { class: "note" }, clock === "ahead" ? S.clockAhead : S.clockUnset));
+      return cell;
+    };
     const plan = routePlan(node, item.entry.companion);
     details.replaceChildren(
       h(
@@ -432,16 +479,21 @@ class MeshcoreMapPanel extends HTMLElement {
         "dl",
         null,
         ...row(S.type, `${S.types[item.type]}, ${S.fresh[item.fresh].toLowerCase()}`),
-        ...(showEntry ? row(S.entry, item.entry.title) : []),
-        ...row(S.keyPrefix, node.pubkey_prefix),
-        ...row(S.onContactList, node.added_to_node ? S.yes : S.no),
-        ...row(S.position, item.located ? `${node.lat.toFixed(5)}, ${node.lon.toFixed(5)}` : S.positionNone),
-        ...row(S.lastAdvert, when(node.last_advert), " ", h("span", { class: "note" }, S.lastAdvertNote)),
-        ...row(S.lastHeard, when(node.last_heard)),
+        ...row(
+          S.lastHeard,
+          ...(node.last_heard
+            ? [when(node.last_heard), " ", h("span", { class: "note" }, S.lastHeardNote)]
+            : [S.lastHeardNever]),
+        ),
         ...(node.last_snr != null ? row(S.snr, S.snrValue(node.last_snr)) : []),
         ...(node.last_hop_count != null ? row(S.hopCount, String(node.last_hop_count)) : []),
+        ...row(S.lastAdvert, ...advertCell()),
+        ...row(S.position, item.located ? `${node.lat.toFixed(5)}, ${node.lon.toFixed(5)}` : S.positionNone),
         ...row(S.route, routeWords(node.route)),
         ...row(S.routeLine, plan.points ? S.routeDrawn : S.routeNotDrawn(plan.reason)),
+        ...row(S.onContactList, node.added_to_node ? S.yes : S.no),
+        ...row(S.keyPrefix, node.pubkey_prefix),
+        ...(showEntry ? row(S.entry, item.entry.title) : []),
       ),
     );
   }

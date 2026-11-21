@@ -6,6 +6,10 @@ export const FRESHNESS = ["fresh", "stale", "unknown"];
 
 const HTML_CHARS = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 const HOUR_MS = 3600000;
+// A node clock this far ahead of the current time counts as wrong.
+const CLOCK_AHEAD_MS = 600000;
+// Advert times before 2020 mean the node clock was never set.
+const CLOCK_UNSET_BEFORE_MS = Date.UTC(2020, 0, 1);
 
 // Escapes text for use in HTML.
 export function escapeHtml(value) {
@@ -23,12 +27,23 @@ export function hasPosition(o) {
   );
 }
 
+// State of the node clock behind last_advert:
+// "none" (no advert time), "unset" (before 2020), "ahead" (in the future) or "ok".
+export function advertClock(node, now) {
+  const time = node.last_advert ? Date.parse(node.last_advert) : NaN;
+  if (!Number.isFinite(time)) return "none";
+  if (time < CLOCK_UNSET_BEFORE_MS) return "unset";
+  return time > now + CLOCK_AHEAD_MS ? "ahead" : "ok";
+}
+
 // Newer of last_advert and last_heard in ms, or null.
-// Times more than one hour ahead of now are ignored.
+// last_advert counts only when the node clock is "ok"; last_heard is Home Assistant's clock.
+// The result is never later than now.
 export function lastSeen(node, now) {
-  const times = [node.last_advert, node.last_heard]
-    .map((t) => (t ? Date.parse(t) : NaN))
-    .filter((t) => Number.isFinite(t) && t <= now + HOUR_MS);
+  const times = [];
+  if (advertClock(node, now) === "ok") times.push(Math.min(Date.parse(node.last_advert), now));
+  const heard = node.last_heard ? Date.parse(node.last_heard) : NaN;
+  if (Number.isFinite(heard)) times.push(Math.min(heard, now));
   return times.length ? Math.max(...times) : null;
 }
 
@@ -52,6 +67,7 @@ export function flattenNodes(entries, entryId, staleAfterHours, now) {
         type: TYPES.includes(node.type) ? node.type : "unknown",
         located: hasPosition(node),
         fresh: freshness(node, staleAfterHours, now),
+        seen: lastSeen(node, now),
       });
     }
   }
@@ -60,12 +76,25 @@ export function flattenNodes(entries, entryId, staleAfterHours, now) {
   );
 }
 
-// Applies search (name part or public key prefix), type and freshness filters.
-export function filterItems(items, { search = "", type = "", fresh = "" } = {}) {
+export const SORTS = ["name", "type", "seen"];
+export const POSITIONS = ["mapped", "unmapped"];
+
+// Returns the items sorted by "name", by "type" (then name) or by "seen" (newest first, unknown last).
+export function sortItems(items, by) {
+  const name = (a, b) => String(a.node.name).localeCompare(String(b.node.name), undefined, { sensitivity: "base" });
+  const sorted = [...items];
+  if (by === "type") return sorted.sort((a, b) => TYPES.indexOf(a.type) - TYPES.indexOf(b.type) || name(a, b));
+  if (by === "seen") return sorted.sort((a, b) => (b.seen ?? -Infinity) - (a.seen ?? -Infinity) || name(a, b));
+  return sorted.sort(name);
+}
+
+// Applies search (name part or public key prefix), type, freshness and position ("mapped"/"unmapped") filters.
+export function filterItems(items, { search = "", type = "", fresh = "", position = "" } = {}) {
   const q = search.trim().toLowerCase();
   return items.filter((item) => {
     if (type && item.type !== type) return false;
     if (fresh && item.fresh !== fresh) return false;
+    if (position && item.located !== (position === "mapped")) return false;
     if (!q) return true;
     return (
       String(item.node.name).toLowerCase().includes(q) ||
@@ -74,8 +103,48 @@ export function filterItems(items, { search = "", type = "", fresh = "" } = {}) 
   });
 }
 
-// Decides whether the stored route can be drawn.
-// Returns {points: [[lat, lon], ...], reason: null} or {points: null, reason: text}.
+// Groups points [{key, lat, lon}] that fall into the same square of `cell` pixels at `zoom`.
+// Returns [{keys, lat, lon, south, west, north, east}], lat/lon being the mean of the group.
+// The point with key `keep` always forms its own group. cell 0 puts every point in its own group.
+export function clusterPoints(points, zoom, cell, keep = null) {
+  const scale = 256 * 2 ** zoom;
+  const groups = new Map();
+  for (const point of points) {
+    let id = `key:${point.key}`;
+    if (cell > 0 && point.key !== keep) {
+      const sin = Math.sin((Math.max(-85.0511, Math.min(85.0511, point.lat)) * Math.PI) / 180);
+      const x = ((point.lon + 180) / 360) * scale;
+      const y = (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * scale;
+      id = `${Math.floor(x / cell)}:${Math.floor(y / cell)}`;
+    }
+    let group = groups.get(id);
+    if (!group) {
+      group = { keys: [], lat: 0, lon: 0, south: 90, west: 180, north: -90, east: -180 };
+      groups.set(id, group);
+    }
+    group.keys.push(point.key);
+    group.lat += point.lat;
+    group.lon += point.lon;
+    group.south = Math.min(group.south, point.lat);
+    group.north = Math.max(group.north, point.lat);
+    group.west = Math.min(group.west, point.lon);
+    group.east = Math.max(group.east, point.lon);
+  }
+  for (const group of groups.values()) {
+    group.lat /= group.keys.length;
+    group.lon /= group.keys.length;
+  }
+  return [...groups.values()];
+}
+
+// Pixel offsets [[dx, dy], ...] that place `count` markers evenly on a ring, first one at the top.
+export function ringOffsets(count, radius) {
+  return Array.from({ length: count }, (_, i) => {
+    const angle = (2 * Math.PI * i) / count - Math.PI / 2;
+    return [Math.round(radius * Math.cos(angle)), Math.round(radius * Math.sin(angle))];
+  });
+}
+
 // Bounding box [[south, west], [north, east]] for the first view. With 20 or more points the outer 5%
 // on each side is left out, so a few far-away nodes do not zoom the map out to the whole world.
 export function mainBounds(points) {
@@ -90,6 +159,8 @@ export function mainBounds(points) {
   ];
 }
 
+// Decides whether the stored route can be drawn.
+// Returns {points: [[lat, lon], ...], reason: null} or {points: null, reason: text}.
 export function routePlan(node, companion) {
   const route = node.route || { state: "none", hops: [] };
   const no = (reason) => ({ points: null, reason });

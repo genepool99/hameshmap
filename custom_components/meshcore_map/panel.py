@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from pathlib import Path
 
@@ -24,9 +25,22 @@ PANEL_ICON = "mdi:map-marker-radius"
 _STATIC_REGISTERED = f"{DOMAIN}_static_registered"
 
 
+def bundle_hash() -> str | None:
+    """Return a short hash of the bundle content, or None when it is missing."""
+    try:
+        return hashlib.sha256(BUNDLE_PATH.read_bytes()).hexdigest()[:12]
+    except OSError:
+        return None
+
+
 async def async_register_panel(hass: HomeAssistant) -> None:
-    """Serve the panel bundle and add the sidebar panel."""
-    if not await hass.async_add_executor_job(BUNDLE_PATH.is_file):
+    """Serve the panel bundle and add the sidebar panel.
+
+    The module URL carries the version and a hash of the bundle, so browsers
+    load a changed bundle instead of a cached one.
+    """
+    digest = await hass.async_add_executor_job(bundle_hash)
+    if digest is None:
         _LOGGER.error(
             "Panel bundle %s is missing; the panel is not registered", BUNDLE_PATH
         )
@@ -46,7 +60,7 @@ async def async_register_panel(hass: HomeAssistant) -> None:
         config={
             "_panel_custom": {
                 "name": PANEL_ELEMENT,
-                "module_url": f"{BUNDLE_URL}?v={integration.version}",
+                "module_url": f"{BUNDLE_URL}?v={integration.version}-{digest}",
             }
         },
         require_admin=False,

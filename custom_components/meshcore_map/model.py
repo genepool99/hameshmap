@@ -4,13 +4,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import math
-import time
 
 NODE_TYPES = {1: "client", 2: "repeater", 3: "room_server", 4: "sensor"}
 
-# Advert times outside this window are treated as a wrong node clock.
-MIN_ADVERT_TIME = 1577836800  # 2020-01-01 UTC
-MAX_CLOCK_AHEAD = 86400
+# Largest advert time that is passed on (9999-01-01 UTC).
+MAX_ADVERT_TIME = 253370764800
 
 MAX_HOPS = 64
 _HEX = frozenset("0123456789abcdef")
@@ -43,12 +41,13 @@ def node_type(value) -> str:
     return NODE_TYPES.get(value, "unknown")
 
 
-def advert_time(value, now: float | None = None) -> str | None:
-    """Convert Unix seconds to ISO 8601 UTC, or None when unset or absurd."""
+def advert_time(value) -> str | None:
+    """Convert the reported Unix seconds to ISO 8601 UTC, or None when unset.
+
+    The time is the node's own clock and is passed on as reported.
+    """
     ts = number(value)
-    if now is None:
-        now = time.time()
-    if ts is None or ts < MIN_ADVERT_TIME or ts > now + MAX_CLOCK_AHEAD:
+    if ts is None or ts <= 0 or ts > MAX_ADVERT_TIME:
         return None
     return datetime.fromtimestamp(int(ts), timezone.utc).isoformat()
 
@@ -124,7 +123,7 @@ def resolve_route(record: dict, own_key: str, nodes: list[dict]) -> dict:
     return {"state": "resolved" if resolved else "unresolved", "hops": hops}
 
 
-def normalise_contact(record, now: float | None = None) -> dict | None:
+def normalise_contact(record) -> dict | None:
     """Turn one get_contacts record into a node, without heard data or route."""
     if not isinstance(record, dict):
         return None
@@ -141,7 +140,7 @@ def normalise_contact(record, now: float | None = None) -> dict | None:
         "lat": lat,
         "lon": lon,
         "added_to_node": record.get("added_to_node") is True,
-        "last_advert": advert_time(record.get("last_advert"), now),
+        "last_advert": advert_time(record.get("last_advert")),
         "last_heard": None,
         "last_snr": None,
         "last_hop_count": None,
@@ -149,13 +148,11 @@ def normalise_contact(record, now: float | None = None) -> dict | None:
     }
 
 
-def build_nodes(
-    contacts, heard: dict[str, dict] | None = None, now: float | None = None
-) -> list[dict]:
+def build_nodes(contacts, heard: dict[str, dict] | None = None) -> list[dict]:
     """Build the node list of one entry from its contact records."""
     pairs = {}
     for record in contacts:
-        node = normalise_contact(record, now)
+        node = normalise_contact(record)
         if node is not None:
             pairs[node["public_key"]] = (node, record)
     nodes = [node for node, _ in pairs.values()]

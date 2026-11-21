@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  ringOffsets,
+  sortItems,
+  advertClock,
+  clusterPoints,
+  lastSeen,
   mainBounds,
   escapeHtml,
   filterItems,
@@ -158,4 +163,85 @@ test("mainBounds leaves out far-away points only when there are many", () => {
     [47, 116.4],
   ]);
   assert.equal(mainBounds([]), null);
+});
+
+test("advertClock tells a usable node clock from one that is ahead or not set", () => {
+  assert.equal(advertClock(node({ last_advert: null }), NOW), "none");
+  assert.equal(advertClock(node({ last_advert: "not a date" }), NOW), "none");
+  assert.equal(advertClock(node({ last_advert: ago(1) }), NOW), "ok");
+  assert.equal(advertClock(node({ last_advert: ago(-0.1) }), NOW), "ok");
+  assert.equal(advertClock(node({ last_advert: ago(-0.5) }), NOW), "ahead");
+  assert.equal(advertClock(node({ last_advert: "1970-01-02T00:00:00+00:00" }), NOW), "unset");
+});
+
+test("a node clock that is ahead or not set never makes a node fresh", () => {
+  assert.equal(freshness(node({ last_advert: ago(-0.5) }), 24, NOW), "unknown");
+  assert.equal(freshness(node({ last_advert: ago(-1000) }), 24, NOW), "unknown");
+  assert.equal(freshness(node({ last_advert: "1970-01-02T00:00:00+00:00" }), 24, NOW), "unknown");
+  assert.equal(lastSeen(node({ last_advert: ago(-0.5), last_heard: ago(3) }), NOW), NOW - 3 * 3600000);
+  assert.equal(freshness(node({ last_advert: ago(-0.5), last_heard: ago(3) }), 24, NOW), "fresh");
+  assert.equal(freshness(node({ last_advert: ago(-0.5), last_heard: ago(30) }), 24, NOW), "stale");
+});
+
+test("clusterPoints groups nearby points and separates them when zoomed in", () => {
+  const points = [
+    { key: "a", lat: 45.5, lon: -122.6 },
+    { key: "b", lat: 45.51, lon: -122.61 },
+    { key: "c", lat: 47.6, lon: -122.3 },
+  ];
+  const far = clusterPoints(points, 2, 64);
+  assert.equal(far.length, 1);
+  assert.deepEqual(far[0].keys, ["a", "b", "c"]);
+  assert.deepEqual([far[0].south, far[0].west, far[0].north, far[0].east], [45.5, -122.61, 47.6, -122.3]);
+  const mid = clusterPoints(points, 8, 64);
+  assert.deepEqual(mid.map((g) => g.keys).sort(), [["a", "b"], ["c"]]);
+  assert.ok(Math.abs(mid.find((g) => g.keys.length === 2).lat - 45.505) < 1e-9);
+  assert.equal(clusterPoints(points, 16, 64).length, 3);
+});
+
+test("clusterPoints keeps the selected point out of clusters and handles cell 0", () => {
+  const same = [
+    { key: "a", lat: 45.5, lon: -122.6 },
+    { key: "b", lat: 45.5, lon: -122.6 },
+    { key: "c", lat: 45.5, lon: -122.6 },
+  ];
+  assert.deepEqual(clusterPoints(same, 10, 64, "b").map((g) => g.keys).sort(), [["a", "c"], ["b"]]);
+  assert.equal(clusterPoints(same, 10, 0).length, 3);
+  assert.deepEqual(clusterPoints([], 10, 64), []);
+  assert.equal(clusterPoints([{ key: "p", lat: 90, lon: 0 }], 3, 64).length, 1);
+});
+
+test("sortItems sorts by name, by type and by last seen", () => {
+  const item = (name, type, seen) => ({ node: { name }, type, seen });
+  const items = [item("beta", "repeater", 300), item("Alpha", "client", null), item("gamma", "client", 900)];
+  const names = (by) => sortItems(items, by).map((i) => i.node.name);
+  assert.deepEqual(names("name"), ["Alpha", "beta", "gamma"]);
+  assert.deepEqual(names("type"), ["Alpha", "gamma", "beta"]);
+  assert.deepEqual(names("seen"), ["gamma", "beta", "Alpha"]);
+  assert.deepEqual(names("other"), ["Alpha", "beta", "gamma"]);
+  assert.equal(items[0].node.name, "beta");
+});
+
+test("flattenNodes records when a node was last seen, ignoring a clock that is ahead", () => {
+  const entries = [{ entry_id: "e", nodes: [node({ last_advert: ago(-5), last_heard: ago(2) }), node({ last_advert: ago(-5) })] }];
+  const seen = flattenNodes(entries, null, 24, NOW).map((i) => i.seen);
+  assert.deepEqual(seen.sort(), [NOW - 2 * 3600000, null].sort());
+});
+
+test("filterItems filters on having a position", () => {
+  const items = [{ node: { name: "a", public_key: "aa" }, located: true }, { node: { name: "b", public_key: "bb" }, located: false }];
+  assert.deepEqual(filterItems(items, { position: "mapped" }).map((i) => i.node.name), ["a"]);
+  assert.deepEqual(filterItems(items, { position: "unmapped" }).map((i) => i.node.name), ["b"]);
+  assert.equal(filterItems(items, {}).length, 2);
+});
+
+test("ringOffsets places markers evenly around the middle", () => {
+  assert.deepEqual(ringOffsets(4, 20), [[0, -20], [20, 0], [0, 20], [-20, 0]]);
+  assert.equal(new Set(ringOffsets(7, 24).map(String)).size, 7);
+  assert.deepEqual(ringOffsets(0, 24), []);
+});
+
+test("lastSeen is never later than now", () => {
+  assert.equal(lastSeen(node({ last_advert: ago(-0.1) }), NOW), NOW);
+  assert.equal(lastSeen(node({ last_heard: ago(-0.1) }), NOW), NOW);
 });

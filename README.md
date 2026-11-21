@@ -9,7 +9,8 @@ MeshMap is a Home Assistant integration that shows the contacts of the [MeshCore
 * Sidebar map of every MeshCore contact that advertises a position, plus the companion.
 * Markers by node type: client, repeater, room server, sensor.
 * Fresh and stale nodes are drawn differently, based on the last advert and the last message heard.
-* Node list with search and filters by type and age, including nodes without a position.
+* Nearby nodes are grouped into numbered clusters that split up as you zoom in.
+* Node list with search, sorting by name, type or last seen, and filters by type, age and position.
 * Node details: type, key prefix, last advert, last heard, SNR and hop count of the last message.
 * Draws the route the companion has stored to the selected node when every hop matches one known node.
 * Supports more than one MeshCore companion.
@@ -53,8 +54,11 @@ Map tiles are loaded by your browser directly from the tile server, which sees y
 ## Usage
 
 * Select a node in the list or on the map to see its details. The list and the map stay in sync.
-* Use the search box and the type and age filters to narrow the list and the map.
+* Use the search box and the type, age and position filters to narrow the list and the map.
+* Sort the list by name, by type or by last seen.
+* Select a numbered cluster to zoom in to its nodes. When zoomed in far, nodes at the same place are shown in a ring around it; the details show the advertised position.
 * Use the frame button on the map to fit all nodes.
+* Open the legend at the bottom left of the map for the meaning of the shapes and fills.
 * With more than one companion, use the selector in the header to show one or all.
 
 ### What the map shows
@@ -62,8 +66,9 @@ Map tiles are loaded by your browser directly from the tile server, which sees y
 | Item | Source | Notes |
 | --- | --- | --- |
 | Node position | Position advertised by the node | Nodes that advertise no position are listed as "no position". |
-| Last advert | Time in the node's advert | Uses the node's own clock. |
-| Last heard, SNR, hop count | Last message Home Assistant received from the node | Kept in memory. Cleared when Home Assistant restarts. |
+| Last advert | Time in the node's advert | Uses the node's own clock and is shown as reported. A time more than 10 minutes in the future or before 2020 is marked as a wrong clock and does not make the node fresh. |
+| Last heard, SNR, hop count | Last message Home Assistant received from the node | Home Assistant's clock. Kept in memory. Cleared when Home Assistant restarts. |
+| Fresh, stale, unknown age | Newer of last heard and a usable last advert | "Unknown age" when neither exists. |
 | Route line | Route stored on the companion for the selected node | Not a measured link. Drawn only when every hop matches exactly one known node with a position. |
 
 MeshMap does not show measured links between nodes, a full network topology or coverage. MeshCore does not provide that data to other integrations.
