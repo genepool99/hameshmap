@@ -18,7 +18,9 @@ ARG UPSTREAM_DIGEST=sha256:4f2d4f0148ef6c5170b9fb86040322fda0f59f0f78ed8b113e193
 # Runs on the build machine's own architecture: the result is plain text.
 FROM --platform=$BUILDPLATFORM ${UPSTREAM_IMAGE}:${UPSTREAM_VERSION}@${UPSTREAM_DIGEST} AS webui
 ARG UPSTREAM_VERSION
-USER root
+# Build stage only: needs to write the rewritten files to /out.
+# hadolint ignore=DL3002
+USER 0
 COPY build/relativize.mjs /build/relativize.mjs
 RUN set -eu; \
     found="$(node -p "require('/app/package.json').version")"; \
@@ -43,7 +45,7 @@ ARG IMAGE_SOURCE=""
 # The container starts as root only to hand the Supervisor-created /data to the
 # unprivileged "node" user; run.mjs then drops root before anything listens.
 # hadolint ignore=DL3002
-USER root
+USER 0
 
 COPY --from=webui --chown=root:root /out/public/ /app/public/
 COPY --from=webui --chown=root:root /out/src/server.js /app/src/server.js

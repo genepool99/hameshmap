@@ -70,6 +70,12 @@ async function watch(page, baseURL) {
 }
 
 const unique = (list) => [...new Set(list)].sort();
+// "host: count" for a list of "METHOD url" entries (keeps evidence files small).
+const hostCounts = (list) => {
+  const counts = {};
+  for (const entry of list) { const h = new URL(entry.split(' ')[1]).hostname; counts[h] = (counts[h] || 0) + 1; }
+  return counts;
+};
 
 // Writes the evidence for one test to the artifacts directory.
 function record(testInfo, name, data) {
@@ -81,7 +87,7 @@ function record(testInfo, name, data) {
 // In baseline mode an escape is evidence, not a failure.
 function expectNoEscape(testInfo, name, seen) {
   const escaped = unique(seen.escaped);
-  record(testInfo, name, { mode: MODE, prefix: PREFIX, escaped, inside: unique(seen.inside).length, external: unique(seen.external), externalUnlisted: unique(seen.externalUnlisted), websockets: seen.websockets, pageErrors: seen.pageErrors, consoleErrors: unique(seen.consoleErrors).slice(0, 30) });
+  record(testInfo, name, { mode: MODE, prefix: PREFIX, escaped, inside: unique(seen.inside).length, externalBlockedByHarness: hostCounts(seen.external), externalUnlisted: unique(seen.externalUnlisted), websockets: seen.websockets, pageErrors: seen.pageErrors, consoleErrors: unique(seen.consoleErrors).slice(0, 30) });
   testInfo.annotations.push({ type: 'escaped-requests', description: `${escaped.length}: ${escaped.slice(0, 12).join(' | ')}` });
   if (MODE === 'baseline') return;
   expect(escaped, 'requests that left the ingress prefix').toEqual([]);

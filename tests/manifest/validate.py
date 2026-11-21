@@ -66,7 +66,7 @@ FORBIDDEN_MAP = {
 }
 SECRET_NAME = re.compile(
     r"(password|passwd|passphrase|secret|token|api_?key|psk|private_?key|"
-    r"mot_?de_?passe|jeton|credential)", re.I)
+    r"mot_?de_?passe|jeton|credential|(?:setup|install|access)_?code)", re.I)
 LORA_SEND_NAME = re.compile(r"lora", re.I)
 TRUTHY = {"1", "true", "yes", "on", "oui", "y"}
 SCALAR_TYPE = re.compile(

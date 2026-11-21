@@ -71,8 +71,10 @@ function readBrokerUrl(options, name, errors) {
 function readTopic(options, name, errors) {
   const s = readText(options, name, errors, { max: 200 });
   if (!s) return '';
-  if (/[#+]/.test(s) || /\s/.test(s)) { errors.push(`Option "${name}" must be a plain MQTT topic prefix without wildcards or spaces.`); return ''; }
-  return s.replace(/^\/+|\/+$/g, '');
+  // A trailing "/#" is a common way to write a prefix; upstream adds it itself.
+  const t = s.replace(/\/+#?$/, '').replace(/^\/+/, '');
+  if (!t || /[#+]/.test(t) || /\s/.test(t)) { errors.push(`Option "${name}" must be a plain MQTT topic prefix without wildcards or spaces.`); return ''; }
+  return t;
 }
 
 // Supervisor "mqtt" service payload: { host, port, ssl, username, password, protocol }.

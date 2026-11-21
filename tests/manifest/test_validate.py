@@ -24,15 +24,13 @@ GOOD = HERE / "fixtures" / "good"
 
 class FixtureCase(unittest.TestCase):
     def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory()
-        self.repo = Path(self._tmp.name) / "repo"
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.repo = Path(tmp.name) / "repo"
         shutil.copytree(GOOD, self.repo)
         (self.repo / "repository.fixture.yaml").rename(self.repo / "repository.yaml")
         self.app = self.repo / "app"
         (self.app / "config.fixture.yaml").rename(self.app / "config.yaml")
-
-    def tearDown(self):
-        self._tmp.cleanup()
 
     # -- helpers ----------------------------------------------------------
     def edit_yaml(self, relative, mutate):
@@ -232,6 +230,10 @@ class OptionsAndSchema(FixtureCase):
         def mutate(config):
             config["schema"]["export_jeton"] = "str?"
         self.edit_config(mutate)
+        self.assert_fails("secret-not-password-type")
+
+    def test_setup_code_is_a_secret(self):
+        self.edit_config(lambda c: c["schema"].update(setup_code="str?"))
         self.assert_fails("secret-not-password-type")
 
     def test_password_with_default_value(self):

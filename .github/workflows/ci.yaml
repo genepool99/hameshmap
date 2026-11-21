@@ -1,0 +1,160 @@
+# Validation only. This workflow never commits, pushes, tags, creates releases
+# or publishes images, and it uses no secrets. Do not add such steps here; see
+# AGENTS.md section 1.
+#
+# All gates run through the Makefile, with the same pinned tool images
+# (tests/images.env) as on a developer machine.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  APP_DIR: live-mesh-map
+
+jobs:
+  static:
+    name: Lint, manifest, unit tests, secret scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+
+      - name: Run the local gate
+        run: make check
+
+      - name: Release-blocking warnings (informational)
+        if: ${{ hashFiles('live-mesh-map/config.yaml') != '' }}
+        continue-on-error: true
+        run: make validate-manifest MANIFEST_FLAGS=--strict
+
+  app-lint:
+    name: Home Assistant App linter
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Lint the App configuration
+        if: ${{ hashFiles('live-mesh-map/config.yaml') != '' }}
+        uses: frenck/action-addon-linter@d51677290aef26cdfc835271dd3c7343ce502809 # v2.21.2
+        with:
+          path: ./live-mesh-map
+
+  build:
+    name: Build ${{ matrix.arch }} (no push)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Plain `docker build`, as documented in "Local app testing". The Home
+      # Assistant builder actions (home-assistant/builder/actions/build-image)
+      # are the publishing path: they take registry credentials and sign with
+      # an OIDC token, which this validation-only workflow must not hold.
+      - name: Build the image for ${{ matrix.platform }}
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          version="$(sed -n 's/^version:[[:space:]]*"\{0,1\}\([^"]*\)"\{0,1\}[[:space:]]*$/\1/p' "${APP_DIR}/config.yaml")"
+          docker build \
+            --platform "${PLATFORM}" \
+            --build-arg "BUILD_VERSION=${version:-dev}" \
+            --build-arg "BUILD_ARCH=${ARCH}" \
+            --tag "local/lmm-c-app:dev" \
+            "${APP_DIR}"
+
+      - name: Check the image architecture
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          got="$(docker image inspect local/lmm-c-app:dev --format '{{.Os}}/{{.Architecture}}')"
+          echo "image platform: ${got}"
+          test "${got}" = "${PLATFORM}"
+
+      - name: Start once and check health (smoke test)
+        env:
+          LMM_IMAGE: local/lmm-c-app:dev
+        run: >-
+          tests/integration/run.sh
+          t01_starts_healthy_on_fresh_volume
+          t02_processes_do_not_run_as_root
+          t03_listening_ports_are_as_expected
+
+  integration:
+    name: Container integration tests (amd64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build and test
+        run: make test-integration
+
+      - name: Upload logs of failed tests
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: integration-logs
+          path: tests/.artifacts/
+          retention-days: 7
+
+  ingress:
+    name: Simulated Ingress browser tests (amd64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build and test
+        run: make test-ingress
+
+      - name: Upload browser test evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: simulated-ingress-evidence
+          path: tests/.artifacts/playwright/
+          retention-days: 7

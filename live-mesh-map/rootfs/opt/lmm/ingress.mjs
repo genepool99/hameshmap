@@ -55,6 +55,7 @@ export function forwardedFor(existing, remoteAddress) {
 
 export function createIngressProxy({ targetHost = '127.0.0.1', targetPort, allow, log = () => {} }) {
   let refused = 0;
+  const tunnels = new Set(); // upgraded connections, not tracked by the HTTP server
   const noteRefusal = (address) => {
     // One line for the first refusals, then every 100th: enough to diagnose, no log flooding.
     refused++;
@@ -105,6 +106,8 @@ export function createIngressProxy({ targetHost = '127.0.0.1', targetPort, allow
       return;
     }
     const up = net.connect({ host: targetHost, port: targetPort });
+    tunnels.add(socket);
+    socket.on('close', () => tunnels.delete(socket));
     up.on('error', () => {
       if (socket.writable && !up.bytesRead) socket.end('HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
       else socket.destroy();
@@ -121,6 +124,12 @@ export function createIngressProxy({ targetHost = '127.0.0.1', targetPort, allow
       up.pipe(socket);
       socket.pipe(up);
     });
+    // Server-side sockets stay half-open after the peer's FIN. A WebSocket has
+    // no use for a half-closed connection: once one side has finished, give
+    // the other a moment to flush, then release both.
+    const release = () => setTimeout(() => { up.destroy(); socket.destroy(); }, 500).unref();
+    socket.on('end', release);
+    up.on('end', release);
     socket.on('close', () => up.destroy());
     up.on('close', () => socket.destroy());
   });
@@ -136,6 +145,7 @@ export function createIngressProxy({ targetHost = '127.0.0.1', targetPort, allow
     close: () => new Promise((resolve) => {
       server.close(() => resolve());
       server.closeAllConnections();
+      for (const t of tunnels) t.destroy();
     }),
     refusedCount: () => refused,
   };

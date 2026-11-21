@@ -1,0 +1,89 @@
+---
+configuration:
+  map_area:
+    name: Zone de la carte
+    description: >-
+      Zone couverte par la carte : un carré de 1 degré nommé d'après son coin
+      sud-ouest, par exemple MN40W075 pour 40-41°N, 75-74°O (MS pour les
+      latitudes sud, E pour les longitudes est), ou un numéro de département
+      français (43, 2A). Vide : à choisir dans l'assistant d'installation de la carte.
+  map_area_name:
+    name: Nom de la zone
+    description: Nom affiché pour la zone, par exemple « Haute-Loire ». Facultatif.
+  radio_frequency_mhz:
+    name: Fréquence radio (MHz)
+    description: >-
+      Fréquence des calculs de couverture, par exemple 869.525 (EU_868) ou
+      906.875 (US LongFast). Vide : 869.525.
+  log_language:
+    name: Langue du journal
+    description: Langue des messages du journal de l'App et des alertes envoyées par la carte. L'interface suit la langue de chaque navigateur.
+  mesh_mqtt_url:
+    name: Broker MQTT du réseau maillé
+    description: >-
+      Broker où la carte lit le trafic Meshtastic et MeshCore, par exemple
+      mqtt://core-mosquitto:1883 ou mqtts://mqtt.example.org:8883. Sans
+      identifiant ni mot de passe dans l'adresse. Vide : à régler dans
+      l'assistant d'installation de la carte. Ce réglage est distinct de la
+      sortie vers Home Assistant ci-dessous.
+  mesh_mqtt_username:
+    name: Identifiant du broker du réseau maillé
+    description: Utilisé seulement si l'adresse du broker ci-dessus est renseignée.
+  mesh_mqtt_password:
+    name: Mot de passe du broker du réseau maillé
+    description: Utilisé seulement si l'adresse du broker ci-dessus est renseignée.
+  mesh_mqtt_root_topic:
+    name: Sujet racine du réseau maillé
+    description: "Préfixe des sujets de la région Meshtastic, par exemple msh/EU_868 ou msh/US, sans « /# » à la fin. Vide : msh/EU_868."
+  meshcore_enabled:
+    name: MeshCore
+    description: Afficher le réseau MeshCore (carte, analyseur de paquets, observateurs) en plus de Meshtastic.
+  meshcore_iata:
+    name: Code de zone MeshCore
+    description: Code de zone des sujets MeshCore (aéroport le plus proche, IATA), par exemple LPY.
+  ha_mqtt_enabled:
+    name: Sortie vers Home Assistant
+    description: >-
+      Publier l'état du réseau (nœuds actifs, alertes, relais surveillés) en
+      MQTT pour Home Assistant. Sans broker manuel ci-dessous, le service MQTT
+      de Home Assistant (par exemple l'App Mosquitto broker) est utilisé
+      automatiquement ; s'il n'y en a pas, rien n'est publié.
+  ha_mqtt_url:
+    name: Sortie vers Home Assistant - broker manuel
+    description: >-
+      Facultatif. Adresse d'un autre broker, par exemple
+      mqtt://192.168.1.10:1883. S'il est renseigné, il est utilisé tel quel et
+      le service MQTT de Home Assistant est ignoré. Sans identifiant ni mot de
+      passe dans l'adresse.
+  ha_mqtt_username:
+    name: Sortie vers Home Assistant - identifiant du broker manuel
+    description: Utilisé seulement avec un broker manuel.
+  ha_mqtt_password:
+    name: Sortie vers Home Assistant - mot de passe du broker manuel
+    description: Utilisé seulement avec un broker manuel.
+  ha_mqtt_discovery:
+    name: Découverte MQTT
+    description: Laisser Home Assistant créer tout seul les capteurs et les relais surveillés (découverte MQTT, préfixe « homeassistant »).
+  ha_mqtt_root_topic:
+    name: Sortie vers Home Assistant - sujet racine
+    description: Préfixe des sujets publiés. Le changer plus tard crée un nouveau jeu d'entités dans Home Assistant.
+  ha_mqtt_lora_send:
+    name: Autoriser l'envoi de messages LoRa depuis MQTT
+    description: >-
+      Désactivé par défaut. Activé, un message publié sur <sujet racine>/envoyer
+      est émis par radio par le module relié à la carte (200 octets au plus, un
+      toutes les 20 secondes). Toute personne pouvant publier sur le broker
+      peut alors émettre.
+  export_token:
+    name: Jeton des exports
+    description: S'il est renseigné, les exports de la carte (GeoJSON, GPX, métriques Prometheus, résumé JSON) exigent ce jeton. Ils ne sont joignables que si l'accès web direct est activé dans la section Réseau.
+  setup_code:
+    name: Code d'installation
+    description: >-
+      Code facultatif demandé à la création du premier compte administrateur de
+      la carte. Vide : la carte affiche un code à usage unique dans le journal
+      de l'App. À renseigner avant d'activer l'accès web direct sur une
+      nouvelle installation.
+network:
+  8095/tcp: Accès web direct sans Home Assistant (facultatif)
+  4404/tcp: Agents distants (facultatif ; réseau local ou VPN uniquement)

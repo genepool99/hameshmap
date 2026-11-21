@@ -39,7 +39,6 @@ V_DATA=lmm-c-data
 
 # ---- reporting --------------------------------------------------------------
 declare -a RESULT_NAMES=() RESULT_STATES=() RESULT_NOTES=()
-CURRENT_TEST=""
 CURRENT_FAILED=0
 declare -a CURRENT_NOTES=()
 
@@ -54,7 +53,7 @@ skip() { SKIPPED_REASON="$*"; log "    SKIP: $*"; }
 
 run_test() {
   local name="$1"
-  CURRENT_TEST="$name"; CURRENT_FAILED=0; CURRENT_NOTES=(); SKIPPED_REASON=""
+  CURRENT_FAILED=0; CURRENT_NOTES=(); SKIPPED_REASON=""
   log ""
   log "--- $name"
   # Tests are functions that record failures through fail(); an unexpected
@@ -304,10 +303,24 @@ listening_ports() {
         else if (/^0{24}01000000$/.test(addr)) ip = "[::1]";
         else if (/^0{16}0000FFFF/i.test(addr)) ip = addr.slice(24).match(/../g).reverse().map((h) => parseInt(h, 16)).join(".");
         else ip = "[" + addr + "]";
+        if (ip === "127.0.0.11") continue; // docker embedded DNS resolver, not the App
         out.add(ip + ":" + parseInt(port, 16));
       }
     }
     console.log([...out].sort().join("\n"));'
+}
+
+# server_environ: "NAME=value" lines of the upstream server process.
+# The process dropped root with setuid, so its /proc/<pid>/environ is only
+# readable with CAP_SYS_PTRACE: the exec (not the container) is privileged.
+server_environ() {
+  docker exec --privileged -u 0 "$C_APP" sh -c '
+    for p in /proc/[0-9]*; do
+      [ "$(cat "$p/comm" 2>/dev/null)" = "node" ] || continue
+      if tr "\0" " " < "$p/cmdline" 2>/dev/null | grep -q "src/server\.js"; then
+        tr "\0" "\n" < "$p/environ"
+      fi
+    done'
 }
 
 # app_logs: everything the app container wrote to stdout/stderr.

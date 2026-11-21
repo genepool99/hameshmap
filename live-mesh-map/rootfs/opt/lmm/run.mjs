@@ -159,7 +159,8 @@ async function main() {
 
   const finish = async (code) => {
     clearTimeout(killTimer);
-    await proxy.close();
+    // Never let a lingering client connection delay the exit.
+    await Promise.race([proxy.close(), new Promise((r) => setTimeout(r, 2000))]);
     log(`stopped (exit code ${code})`);
     process.exit(code);
   };

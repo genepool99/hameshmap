@@ -1,0 +1,88 @@
+---
+name: Live Mesh Map
+# Version of this App. The packaged upstream release (Live Mesh Map World
+# 1.5.14) is pinned in the Dockerfile.
+version: "0.1.0"
+slug: live_mesh_map
+description: >-
+  Live map, monitoring and administration of Meshtastic and MeshCore networks
+  (Live Mesh Map World), with Home Assistant sensors through MQTT discovery
+url: https://github.com/sauveteur71/live-mesh-map-world
+arch:
+  - amd64
+  - aarch64
+stage: experimental
+
+# No pre-built image is published yet: Home Assistant builds the App locally
+# from the Dockerfile. Once the owner publishes multi-arch images, set this to
+# the generic image name (the tag is the "version" above).
+# image: ghcr.io/OWNER/live-mesh-map
+
+# The upstream image has no init system of its own: keep Docker's default init
+# (signal forwarding and reaping of the helper processes upstream starts).
+init: true
+startup: application
+boot: auto
+# Upstream stops in well under a second; this leaves room for a busy database.
+timeout: 30
+
+# ---- Web interface ----------------------------------------------------------
+ingress: true
+ingress_port: 8099
+# Backup restore and photo uploads are sent as request bodies of several megabytes.
+ingress_stream: true
+panel_icon: mdi:map-marker-radius
+panel_title: Live Mesh Map
+panel_admin: true
+# Answered by the upstream health endpoint through the ingress listener.
+watchdog: "http://[HOST]:[PORT:8099]/sante"
+
+# ---- Network ------------------------------------------------------------------
+# Both ports are closed by default. Inside the container the corresponding
+# listeners are bound to loopback until a host port is set here.
+ports:
+  8095/tcp: null
+  4404/tcp: null
+ports_description:
+  8095/tcp: Direct web access without Home Assistant (optional; the map then relies on its own accounts only)
+  4404/tcp: Remote agents (optional; local network or VPN only, never forward from the internet)
+
+# ---- Home Assistant services ----------------------------------------------------
+# The MQTT service is used for the Home Assistant output when no manual broker
+# is configured. /services/mqtt and /addons/self/info need no extra API role.
+services:
+  - mqtt:want
+
+# ---- Storage --------------------------------------------------------------------
+# Everything lives in /data (always mapped); no other directory is mounted.
+# The SQLite database runs in WAL mode: stop the App while it is backed up.
+backup: cold
+
+# ---- Options ----------------------------------------------------------------------
+options:
+  log_language: en
+  meshcore_enabled: true
+  ha_mqtt_enabled: true
+  ha_mqtt_discovery: true
+  ha_mqtt_root_topic: live-mesh-map
+  ha_mqtt_lora_send: false
+schema:
+  map_area: str?
+  map_area_name: str?
+  radio_frequency_mhz: float(100,3000)?
+  log_language: list(en|fr)
+  mesh_mqtt_url: str?
+  mesh_mqtt_username: str?
+  mesh_mqtt_password: password?
+  mesh_mqtt_root_topic: str?
+  meshcore_enabled: bool
+  meshcore_iata: str?
+  ha_mqtt_enabled: bool
+  ha_mqtt_url: str?
+  ha_mqtt_username: str?
+  ha_mqtt_password: password?
+  ha_mqtt_discovery: bool
+  ha_mqtt_root_topic: str
+  ha_mqtt_lora_send: bool
+  export_token: password?
+  setup_code: password?

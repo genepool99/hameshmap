@@ -61,5 +61,4 @@ Contributions are accepted under the repository licence
 ## Automated agents
 
 AI agents and automation working in this repository must follow
-[AGENTS.md](AGENTS.md), including its absolute restrictions on Git operations
-and attribution.
+[AGENTS.md](AGENTS.md).

@@ -239,18 +239,19 @@ t08_lora_send_is_off_by_default() {
   [[ -n "$result" ]] || { fail "no answer on $HA_ROOT/envoyer/resultat within 10 s (cannot show the request was refused)"; return; }
   [[ "$(jq -r .ok <<<"$result")" == "false" ]] || fail "transmit request was not refused"
   grep -q 'DOMOTIQUE_ENVOI_LORA' <<<"$result" || note "refusal text does not name DOMOTIQUE_ENVOI_LORA (upstream wording changed?)"
-  local env; env="$(docker exec "$C_APP" sh -c 'for p in /proc/[0-9]*; do if grep -q server.js "$p/cmdline" 2>/dev/null; then tr "\0" "\n" < "$p/environ" | grep "^DOMOTIQUE_ENVOI_LORA="; fi; done' 2>/dev/null || true)"
-  note "server environment: ${env:-DOMOTIQUE_ENVOI_LORA not set}"
-  [[ "$env" != *"=oui"* ]] || fail "server process has DOMOTIQUE_ENVOI_LORA=oui"
+  local env; env="$(server_environ | grep '^DOMOTIQUE_ENVOI_LORA=' || true)"
+  note "server environment: ${env:-DOMOTIQUE_ENVOI_LORA not set (upstream default: off)}"
+  [[ "${env,,}" != *"=oui"* ]] || fail "server process has DOMOTIQUE_ENVOI_LORA=oui"
 }
 
 t09_no_docker_socket_and_no_updater() {
   app_running || { skip "needs the container from t01"; return; }
   if docker exec "$C_APP" sh -c 'test -e /var/run/docker.sock || test -e /run/docker.sock'; then fail "a Docker socket exists in the container"; fi
-  if docker top "$C_APP" -eo args | grep -q majeur; then fail "the upstream updater (majeur.js) is running"; fi
+  if docker top "$C_APP" -eo pid,args | grep -q majeur; then fail "the upstream updater (majeur.js) is running"; fi
   local mounts; mounts="$(docker inspect -f '{{range .Mounts}}{{.Destination}} {{end}}' "$C_APP")"
   [[ "$mounts" == "/data " ]] || fail "unexpected mounts: $mounts"
-  local env; env="$(docker exec "$C_APP" sh -c 'for p in /proc/[0-9]*; do if grep -q server.js "$p/cmdline" 2>/dev/null; then tr "\0" "\n" < "$p/environ" | cut -d= -f1; fi; done' | sort -u | tr '\n' ' ')"
+  local env; env="$(server_environ | cut -d= -f1 | sort -u | tr '\n' ' ')"
+  [[ -n "$env" ]] || { fail "could not read the server process environment"; return; }
   note "server environment variable names: $env"
   local v
   for v in MAJ_URL MAJ_JETON MAJ_SERVICE DOCKER_SOCKET SUPERVISOR_TOKEN; do
@@ -301,7 +302,8 @@ t11_data_persists_across_container_recreation() {
 
 t12_invalid_options_exit_nonzero_without_leaking() {
   rm_containers "$C_APP"
-  local canary="bad$(random_token)" out code name
+  local canary out code name
+  canary="bad$(random_token)"
   mkdir -p "$ARTIFACTS"
   run_invalid() { # <name> <options-json or raw text> <expected-fragment>
     name="$1"
@@ -385,6 +387,32 @@ t15_starts_without_supervisor_or_mqtt_service() {
   fi
 }
 
+# Probe, not a pass/fail gate for the pinned interface: records what happens
+# when the user maps the direct web port. Threat P2 in docs/security/threat-model.md.
+t16_mapped_web_port_and_setup_wizard() {
+  start_broker "$C_MQ_MAN" mq-manual "$MAN_USER" "$MAN_PASS" || return 1
+  rm_containers "$C_SUP" "$C_MQ_SUP"
+  local out
+  probe() { # <label> <options-json>
+    fresh_volume; write_options "$2"
+    FAKE_NETWORK='{"8095/tcp":8095,"4404/tcp":null}' start_supervisor none "$SUPERVISOR_TOKEN_VALUE" || return 1
+    start_app
+    wait_healthy || { fail "$1: not healthy with port 8095 mapped"; return 1; }
+    out="$(http_from "$LMM_PEER_IP" "http://app:8095/api/installation")"
+    note "$1: GET :8095/api/installation from a peer without proxy headers -> ${out:0:90}"
+  }
+  probe "with setup_code" "$(options_json .)" || return
+  [[ "$out" == 200\ * ]] || { fail "port 8095 not reachable although it is mapped"; return; }
+  [[ "$(jq -r .codeRequis <<<"${out#200 }")" == "true" ]] || fail "setup_code is set but the wizard asks for no code on the direct port"
+  [[ "$(listening_ports | tr '\n' ' ')" == *"127.0.0.1:4404"* ]] || fail "port 4404 opened although only 8095 was mapped"
+  probe "without setup_code" "$(options_json 'del(.setup_code)')" || return
+  if [[ "$(jq -r .codeRequis <<<"${out#200 }" 2>/dev/null)" == "false" ]]; then
+    note "FINDING P2: with port 8095 mapped and no setup_code, a client on the local network can create the administrator without any code until the wizard is completed"
+  else
+    ok "wizard requires a code on the direct port even without setup_code"
+  fi
+}
+
 ALL_TESTS=(
   t01_starts_healthy_on_fresh_volume
   t02_processes_do_not_run_as_root
@@ -401,6 +429,7 @@ ALL_TESTS=(
   t13_manual_broker_takes_precedence_over_supervisor
   t14_broker_down_at_start_then_reconnects
   t15_starts_without_supervisor_or_mqtt_service
+  t16_mapped_web_port_and_setup_wizard
 )
 
 main() {

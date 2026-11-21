@@ -7,6 +7,7 @@ config:
     siblings_only: true  # CHANGELOG repeats "Added"/"Fixed" headings
   MD033: false  # inline HTML
   MD036: false  # emphasis used as heading
+  MD038: false  # spaces inside code spans (meaningful in upstream value docs)
   MD041: false  # first line heading
   MD060: false  # table column style
 ignores:
