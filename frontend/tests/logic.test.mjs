@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  mainBounds,
   escapeHtml,
   filterItems,
   flattenNodes,
@@ -145,4 +146,16 @@ test("formatAge gives relative ages", () => {
   assert.equal(formatAge(ago(5), NOW), "5 h ago");
   assert.equal(formatAge(ago(72), NOW), "3 d ago");
   assert.equal(formatAge(ago(-5), NOW), "in the future");
+});
+
+test("mainBounds leaves out far-away points only when there are many", () => {
+  const near = Array.from({ length: 40 }, (_, i) => ({ lat: 47 + i * 0.01, lon: -122 + i * 0.01 }));
+  const far = { lat: 39.9, lon: 116.4 };
+  const [[south, west], [north, east]] = mainBounds([...near, far]);
+  assert.ok(south >= 47 && north <= 47.4 && west >= -122 && east <= -121.6);
+  assert.deepEqual(mainBounds([near[0], far]), [
+    [39.9, -122],
+    [47, 116.4],
+  ]);
+  assert.equal(mainBounds([]), null);
 });

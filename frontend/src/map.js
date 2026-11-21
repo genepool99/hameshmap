@@ -1,6 +1,6 @@
 // Leaflet map with node markers, companion markers and the stored-route line.
 import * as L from "leaflet/dist/leaflet-src.esm.js";
-import { escapeHtml } from "./logic.js";
+import { escapeHtml, mainBounds } from "./logic.js";
 import { ICONS, shapeSvg } from "./icons.js";
 import { S } from "./strings.js";
 
@@ -58,7 +58,8 @@ export class MapView {
     if (/^https:\/\/([a-z0-9-]+\.)*openstreetmap\.org\//i.test(url)) {
       text = `<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">${text}</a>`;
     }
-    this.tiles = L.tileLayer(url, { maxZoom: 19, attribution: text }).addTo(this.map);
+    // Tile requests carry the Home Assistant origin as Referer; tile servers such as OpenStreetMap refuse requests without one.
+    this.tiles = L.tileLayer(url, { maxZoom: 19, attribution: text, referrerPolicy: "origin" }).addTo(this.map);
   }
 
   // Shows one marker per located item and marks the selected one.
@@ -135,11 +136,15 @@ export class MapView {
     return true;
   }
 
-  // Fits once, as soon as the map has a size and markers.
+  // Fits once, as soon as the map has a size and markers, to the area holding most markers.
   tryInitialFit() {
     if (this.fitted) return;
     const size = this.map.getSize();
-    if (size.x > 0 && size.y > 0) this.fitted = this.fitAll();
+    if (size.x <= 0 || size.y <= 0) return;
+    const bounds = mainBounds(this.points().map((p) => ({ lat: p.lat, lon: p.lng })));
+    if (!bounds) return;
+    this.map.fitBounds(L.latLngBounds(bounds).pad(0.15), { maxZoom: 14 });
+    this.fitted = true;
   }
 
   resized() {

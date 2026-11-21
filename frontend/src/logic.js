@@ -76,6 +76,20 @@ export function filterItems(items, { search = "", type = "", fresh = "" } = {}) 
 
 // Decides whether the stored route can be drawn.
 // Returns {points: [[lat, lon], ...], reason: null} or {points: null, reason: text}.
+// Bounding box [[south, west], [north, east]] for the first view. With 20 or more points the outer 5%
+// on each side is left out, so a few far-away nodes do not zoom the map out to the whole world.
+export function mainBounds(points) {
+  if (!points.length) return null;
+  const lats = points.map((p) => p.lat).sort((a, b) => a - b);
+  const lons = points.map((p) => p.lon).sort((a, b) => a - b);
+  const cut = points.length >= 20 ? Math.floor(points.length * 0.05) : 0;
+  const last = points.length - 1 - cut;
+  return [
+    [lats[cut], lons[cut]],
+    [lats[last], lons[last]],
+  ];
+}
+
 export function routePlan(node, companion) {
   const route = node.route || { state: "none", hops: [] };
   const no = (reason) => ({ points: null, reason });

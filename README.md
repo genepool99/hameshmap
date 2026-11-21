@@ -48,7 +48,7 @@ Open **Settings > Devices & services > MeshMap > Configure**.
 | `tile_url` | `https://tile.openstreetmap.org/{z}/{x}/{y}.png` | Map tile URL with `{z}`, `{x}` and `{y}`. |
 | `tile_attribution` | `© OpenStreetMap contributors` | Attribution text shown on the map. |
 
-Map tiles are loaded by your browser directly from the tile server, which sees your IP address and the area you view. Node data is not sent to it.
+Map tiles are loaded by your browser directly from the tile server, which sees your IP address, the address of your Home Assistant (as the Referer header) and the area you view. Node data is not sent to it.
 
 ## Usage
 
