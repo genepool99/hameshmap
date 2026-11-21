@@ -1,0 +1,33 @@
+name: Fixture App
+version: "0.1.0"
+slug: app
+description: Fixture used by the manifest validator tests
+url: https://example.invalid/fixture
+arch:
+  - aarch64
+  - amd64
+stage: experimental
+ingress: true
+ingress_port: 8099
+backup: cold
+services:
+  - mqtt:want
+ports:
+  4404/tcp: null
+options:
+  mqtt_host: ""
+  mqtt_port: 1883
+  mqtt_password: ""
+  lora_send: false
+  log_level: info
+  extra_brokers: []
+schema:
+  mqtt_host: str
+  mqtt_port: port
+  mqtt_username: "str?"
+  mqtt_password: password
+  lora_send: bool
+  log_level: list(debug|info|warning)
+  extra_brokers:
+    - url: str
+      password: "password?"

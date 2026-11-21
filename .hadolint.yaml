@@ -1,0 +1,7 @@
+---
+# The App image derives from a pinned upstream image; base image pinning is
+# enforced separately (and more strictly) by tests/manifest/validate.py.
+failure-threshold: warning
+trustedRegistries:
+  - ghcr.io
+  - docker.io

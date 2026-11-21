@@ -1,0 +1,5 @@
+*
+!Dockerfile
+!NOTICE.md
+!build/
+!rootfs/
