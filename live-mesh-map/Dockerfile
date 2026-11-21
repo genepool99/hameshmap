@@ -1,24 +1,17 @@
 # Live Mesh Map - Home Assistant App
 #
-# A thin layer on top of the published image of Live Mesh Map World
+# Built on the published image of Live Mesh Map World
 # (https://github.com/sauveteur71/live-mesh-map-world, GPL-3.0, (c) its authors).
-# The upstream version is pinned here, by tag AND by digest of the multi-arch
-# index. To move to another upstream release, change the three UPSTREAM_*
-# values together (docker buildx imagetools inspect <image>:<tag> prints the
-# digest) and rebuild: the build stops if the web UI no longer matches what
-# build/relativize.mjs expects.
-#
-# Home Assistant no longer reads build.yaml (Supervisor 2026.04): base image,
-# build arguments and labels are all defined in this file.
+# UPSTREAM_VERSION and UPSTREAM_DIGEST (digest of the multi-arch index) are
+# written by "make update". The build fails when the upstream web UI does not
+# match what build/relativize.mjs expects.
 ARG UPSTREAM_IMAGE=ghcr.io/sauveteur71/live-mesh-map-world
 ARG UPSTREAM_VERSION=1.5.14
 ARG UPSTREAM_DIGEST=sha256:4f2d4f0148ef6c5170b9fb86040322fda0f59f0f78ed8b113e193fd4ee77d237
 
-# ---- Stage 1: make the upstream web UI work below a URL prefix (Ingress) ----
-# Runs on the build machine's own architecture: the result is plain text.
+# ---- Stage 1: rewrite the upstream web UI to relative URLs ----
 FROM --platform=$BUILDPLATFORM ${UPSTREAM_IMAGE}:${UPSTREAM_VERSION}@${UPSTREAM_DIGEST} AS webui
 ARG UPSTREAM_VERSION
-# Build stage only: needs to write the rewritten files to /out.
 # hadolint ignore=DL3002
 USER 0
 COPY build/relativize.mjs /build/relativize.mjs
@@ -39,11 +32,10 @@ ARG UPSTREAM_DIGEST
 # Provided by the Home Assistant Supervisor / builder; defaults for a plain "docker build".
 ARG BUILD_VERSION=dev
 ARG BUILD_ARCH="aarch64|amd64"
-# Set when the image is published (URL of the repository holding this Dockerfile).
+# URL of the repository holding this Dockerfile.
 ARG IMAGE_SOURCE=""
 
-# The container starts as root only to hand the Supervisor-created /data to the
-# unprivileged "node" user; run.mjs then drops root before anything listens.
+# run.mjs starts as root, gives /data to the "node" user, then drops root.
 # hadolint ignore=DL3002
 USER 0
 

@@ -22,7 +22,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import net from 'node:net';
 import { spawn } from 'node:child_process';
-import { buildEnvironment, redact, redactText, WEB_PORT, AGENTS_PORT, INGRESS_PORT, SUPERVISOR_INGRESS_ADDRESS } from './config.mjs';
+import { buildEnvironment, overriddenByMapSettings, redact, redactText, WEB_PORT, AGENTS_PORT, INGRESS_PORT, SUPERVISOR_INGRESS_ADDRESS } from './config.mjs';
 import { createIngressProxy, parseAllowList } from './ingress.mjs';
 import { takeOwnership, isWritable } from './datadir.mjs';
 import { supervisorGet, publishedPorts, parsePortList } from './supervisor.mjs';
@@ -135,6 +135,15 @@ async function main() {
 
   // ---- Data directory and privileges ----------------------------------------
   prepareData();
+
+  // ---- Settings saved inside the map ------------------------------------------
+  // Upstream applies them over the environment built above; say so, by name only.
+  let mapSettings = null;
+  try { mapSettings = JSON.parse(fs.readFileSync(`${DATA_DIR}/reglages.json`, 'utf8')); } catch { /* none saved, or unreadable: upstream decides */ }
+  const overridden = overriddenByMapSettings(built.env, mapSettings);
+  if (overridden.length) log(`WARNING settings saved inside the map replace these App options: ${overridden.join(', ')} (change them in the map under Settings, or remove them there to use the App options)`);
+  const savedLora = String(mapSettings?.variables?.DOMOTIQUE_ENVOI_LORA ?? '').trim().toLowerCase();
+  if (savedLora === 'oui' && built.env.DOMOTIQUE_ENVOI_LORA !== 'oui') log('WARNING sending LoRa messages from MQTT is ENABLED by a setting saved inside the map although the App option is off');
 
   // ---- Ingress listener -------------------------------------------------------
   const allow = parseAllowList(process.env.LMM_INGRESS_ALLOW, SUPERVISOR_INGRESS_ADDRESS);

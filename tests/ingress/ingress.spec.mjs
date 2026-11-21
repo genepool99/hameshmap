@@ -1,10 +1,6 @@
-// SIMULATED INGRESS browser tests -- not a Home Assistant acceptance test.
-//
-// The page is loaded through tests/ingress/proxy.mjs, which serves the App
-// below /api/hassio_ingress/<token>/ like Home Assistant does. These tests
-// prove that the web UI works below a path prefix and does not address
-// anything outside of it. They do not prove behaviour inside the real Home
-// Assistant frontend (iframe, authentication, ingress session, HTTPS).
+// Browser tests of the web UI below a path prefix. The page is loaded
+// through tests/ingress/proxy.mjs, which serves the App below
+// /api/hassio_ingress/<token>/. Home Assistant itself is not involved.
 //
 // Environment (set by run.sh):
 //   INGRESS_PREFIX   /api/hassio_ingress/<token>
@@ -22,7 +18,7 @@ const SETUP_CODE = process.env.SETUP_CODE || '';
 const OUT = process.env.PW_OUTPUT_DIR || '/artifacts/playwright';
 
 // External hosts the upstream UI is known to use for map tiles and overlays
-// (found in upstream public/app.js and src/config.js at v1.5.14). Requests to
+// (upstream public/app.js and src/config.js). Requests to
 // them are recorded and then aborted: the tests never load the internet.
 const EXTERNAL_ALLOW = new Set([
   'server.arcgisonline.com', 'data.geopf.fr', 'tile.openstreetmap.org', 'opentopomap.org',

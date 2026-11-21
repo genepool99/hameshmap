@@ -1,4 +1,4 @@
-// SIMULATED Ingress browser tests. See run.sh and docs/testing/test-plan.md.
+// Configuration of the browser tests started by run.sh.
 import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({

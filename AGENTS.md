@@ -34,36 +34,34 @@ only.
 
 ## 2. What this project is
 
-A Home Assistant App (formerly "add-on") that packages
+A personal project, shared publicly: a Home Assistant App (formerly "add-on")
+that packages
 [Live Mesh Map World](https://github.com/sauveteur71/live-mesh-map-world)
 (GPL-3.0, Node.js) to run under Home Assistant Supervisor, with Ingress and
-MQTT Discovery. It is a thin packaging layer around a pinned upstream release,
-not a fork. See `docs/architecture.md` and `docs/adr/`.
+MQTT Discovery. It is a thin layer on a pinned upstream image, not a fork.
 
 ## 3. Engineering rules
 
-1. Inspect the workspace before changing it. Preserve existing files and owner
-   changes; never overwrite owner instructions.
-2. Prefer upstream-supported interfaces over modifying upstream internals.
-3. Do not invent APIs or assume behavior. Verify against upstream source at the
-   pinned revision and against current Home Assistant developer documentation.
-4. Record significant decisions as ADRs in `docs/adr/`.
-5. Write meaningful tests for implemented behavior and run them after changes.
-6. Never report something as working unless it was verified. Keep the
-   distinction between **implemented**, **tested**, **partially tested**, and
-   **planned** explicit in docs and reports.
-7. Synthetic tests do not substitute for real integration testing. Label which
-   is which.
-8. Avoid unnecessary dependencies, custom frameworks, and clever abstractions.
-9. Treat secrets, MQTT credentials, radio traffic, message content, and
-   location data as sensitive. Never log them; never put them in fixtures.
-10. Least privilege: no privileged container, `full_access`, `docker_api`,
-    Docker socket, host networking, or broad host mounts unless an ADR
-    justifies it. Never reproduce upstream's Docker-socket updater.
-11. LoRa transmission from MQTT (`DOMOTIQUE_ENVOI_LORA`) stays disabled by
-    default.
-12. Never remove or recreate user data under `/data` during normal startup.
-13. Pin the upstream version explicitly. Never track `latest`.
+1. Keep it small. The only documents are `README.md` (install instructions),
+   `live-mesh-map/DOCS.md` (shown in Home Assistant), `live-mesh-map/NOTICE.md`
+   and `live-mesh-map/CHANGELOG.md`. Do not add design documents, decision
+   records, test plans, policies or checklists.
+2. Documentation and code comments are instructions or descriptions of what
+   the code does. No rationale essays, status reports, roadmaps or product
+   discussion.
+3. Tests: `tests/unit/` (dependency-free `node:test`) and `tests/ingress/`
+   (browser test below a path prefix). Do not add further test layers or lint
+   tooling unless asked.
+4. Do not invent APIs or assume behavior. Verify against upstream source at
+   the pinned version and against current Home Assistant developer docs.
+5. Never report something as working unless it was verified.
+6. Never log secrets, MQTT credentials, message content or location data.
+7. No privileged container, `full_access`, `docker_api`, Docker socket, host
+   networking or host mounts. Never reproduce upstream's Docker-socket updater.
+8. LoRa transmission from MQTT (`DOMOTIQUE_ENVOI_LORA`) stays off by default.
+9. Never remove or recreate user data under `/data` during startup.
+10. The upstream version is pinned by version and digest in
+    `live-mesh-map/Dockerfile`; `make update` changes it. Never use `latest`.
 
 ## 4. Owner's server
 
@@ -73,33 +71,18 @@ changing any service, explain the change, affected service, downtime/risk,
 backup needs, and rollback, then wait for approval. Never copy private keys
 into the repository.
 
-## 5. Repository layout and ownership
+## 5. Layout
 
-| Path | Purpose | Owning role |
-| --- | --- | --- |
-| `AGENTS.md`, `README.md`, `LICENSE`, `NOTICE.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md` | Repository-wide docs | Coordinator |
-| `docs/architecture.md`, `docs/requirements.md`, `docs/adr/`, `docs/release-checklist.md` | Architecture and decisions | Coordinator |
-| `docs/upstream/` | Verified upstream findings and integration contract | Agent A (upstream analysis) |
-| `repository.yaml`, `live-mesh-map/` | The App: manifests, Dockerfile, startup code, App docs, translations | Agent B (App engineering) |
-| `tests/`, `.github/`, `docs/testing/`, `docs/security/`, `Makefile`, lint configuration files | Tests, CI, quality gates, threat model | Agent C (quality and security) |
+| Path | Purpose |
+| --- | --- |
+| `repository.yaml`, `live-mesh-map/` | The App: manifest, Dockerfile, startup code, translations |
+| `live-mesh-map/build/relativize.mjs` | Build-time rewrite of the upstream web UI to relative URLs |
+| `scripts/update-upstream.mjs` | `make update` |
+| `tests/unit/`, `tests/ingress/` | Tests |
 
-Two agents must not edit the same file concurrently. Changes outside your
-ownership area go through the coordinator.
+## 6. Checks
 
-## 6. Subagent reporting format
-
-Every subagent finishes with:
-
-1. Findings.
-2. Files created or modified.
-3. Tests performed and their results (exact commands, pass/fail).
-4. Unverified assumptions.
-5. Remaining risks or blockers.
-
-Subagents do not spawn further agents without a clear technical justification.
-
-## 7. Local checks
-
-Run `make check` (see `Makefile` and `docs/testing/`) before reporting work as
-complete. Local Docker use is fine; use uniquely named containers and images,
-bind test ports to `127.0.0.1` only, and clean up what you start.
+Run `make test` after changes, and `make test-ingress` after changes to the
+Dockerfile, `relativize.mjs`, `ingress.mjs` or the upstream version. Name test
+containers `lmm-test-*`, bind ports to `127.0.0.1` only, and remove what you
+start.

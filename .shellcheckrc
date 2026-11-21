@@ -1,3 +1,0 @@
-# Follow `source` statements relative to the script being checked.
-source-path=SCRIPTDIR
-external-sources=true

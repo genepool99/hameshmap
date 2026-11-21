@@ -1,15 +1,9 @@
-// Ingress listener: a small reverse proxy in front of the upstream web server.
-//
-// It exists for three reasons, none of which upstream can do by itself:
-//   1. accept connections only from the Home Assistant ingress gateway;
-//   2. scope the upstream session cookie (issued with Path=/) to this App's
-//      ingress path, so it is not sent to Home Assistant or to other Apps
-//      that share the same browser origin;
-//   3. mark requests as proxied (X-Forwarded-For) so upstream never treats an
-//      ingress user as a "local network" visitor.
-//
-// It does not rewrite response bodies and does not authenticate anybody:
-// upstream accounts and roles apply unchanged behind it.
+// Ingress listener: a reverse proxy in front of the upstream web server.
+//   - Accepts connections only from the allowed source addresses.
+//   - Rewrites the Path of upstream cookies from "/" to the ingress path.
+//   - Appends the peer address to X-Forwarded-For.
+//   - Tunnels WebSocket upgrades.
+// Response bodies are passed through unchanged.
 
 import http from 'node:http';
 import net from 'node:net';

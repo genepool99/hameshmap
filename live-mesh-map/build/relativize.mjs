@@ -8,13 +8,10 @@
 // same URLs written *relative* ("api/...", "app.js") resolve correctly both
 // at the root (direct access) and below any prefix. This script rewrites them.
 //
-// Design rules:
-//   * deterministic, runs once at image build, never at request time;
-//   * every targeted rule declares how often it must match and the build
-//     fails if it does not (upstream changed: review needed);
-//   * after rewriting, a residual scan fails the build if any root-absolute
-//     same-origin reference is left that is not on the reviewed allowlist;
-//   * rewritten scripts are syntax-checked by the caller (node --check).
+// Checks, each of which fails the build:
+//   * every targeted rule must match exactly its declared number of times;
+//   * after rewriting, no root-absolute same-origin reference may remain
+//     unless it is on the allowlist below.
 //
 // Usage: node relativize.mjs <appDir> <outDir>
 //   <appDir>  upstream /app (contains public/, src/server.js, package.json)

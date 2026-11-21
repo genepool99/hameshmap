@@ -1,112 +1,23 @@
-# Local quality gates for the Live Mesh Map World Home Assistant App.
-#
-#   make check             default gate: lint, manifest validation, unit tests, secret scan
-#   make test-integration  local container tests (builds the image; not part of `check`)
-#   make test-ingress      simulated-Ingress browser tests (builds the image; not part of `check`)
-#
-# Every tool runs from a container image pinned by tag and digest in
-# tests/images.env; nothing is installed on the host. Requirements: docker,
-# node (>= 20, for test-unit), bash.
-#
-# Nothing here commits, pushes, tags or publishes. Keep it that way (AGENTS.md).
+# make test          unit tests (needs Node.js 22 or newer)
+# make build         builds the App image local/live-mesh-map:dev
+# make test-ingress  builds the image and runs the browser tests below an
+#                    Ingress-style path prefix (needs docker)
+# make update        moves to the latest Live Mesh Map World release, then
+#                    runs the tests
 
-SHELL := /usr/bin/env bash
-.SHELLFLAGS := -euo pipefail -c
-.DEFAULT_GOAL := help
+IMAGE ?= local/live-mesh-map:dev
 
-include tests/images.env
+.PHONY: test build test-ingress update
 
-APP_DIR      ?= live-mesh-map
-LOCAL_IMAGE  ?= local/lmm-c-app:dev
-PLATFORM     ?= linux/amd64
-UNIT_TIMEOUT ?= 180
-DOCKER_RUN   := docker run --rm --network none -v "$(CURDIR)":/work:ro -w /work
-
-CHECK_TARGETS := lint-yaml lint-docker lint-shell lint-actions lint-markdown \
-                 validate-manifest test-unit scan-secrets
-
-.PHONY: help check $(CHECK_TARGETS) build test-integration test-ingress \
-        test-ingress-baseline clean pull-tools
-
-help:
-	@echo "Targets:"
-	@echo "  check                  run: $(CHECK_TARGETS)"
-	@echo "  build                  docker build $(APP_DIR) -> $(LOCAL_IMAGE) (never pushed)"
-	@echo "  test-integration       local container tests against LMM_IMAGE (default: build)"
-	@echo "  test-ingress           simulated-Ingress browser tests against LMM_IMAGE (default: build)"
-	@echo "  test-ingress-baseline  same harness against the unmodified upstream image"
-	@echo "  clean                  remove test containers, networks, volumes and local images"
-
-# Runs every gate even if an earlier one fails, then prints one summary line
-# per gate. A gate that prints a line starting with "SKIP" and exits 0 is
-# reported as SKIP, never as PASS.
-check:
-	@tests/lib/run-gates.sh $(CHECK_TARGETS)
-
-lint-yaml:
-	$(DOCKER_RUN) $(YAMLLINT_IMAGE) yamllint .
-
-lint-docker:
-	@files="$$(tests/lib/find-files.sh dockerfiles)"; \
-	if [[ -z "$$files" ]]; then echo "SKIP lint-docker: no Dockerfile in the repository yet"; exit 0; fi; \
-	echo "hadolint: $$files"; \
-	$(DOCKER_RUN) --entrypoint hadolint $(HADOLINT_IMAGE) --config .hadolint.yaml $$files
-
-lint-shell:
-	@files="$$(tests/lib/find-files.sh shell)"; \
-	if [[ -z "$$files" ]]; then echo "SKIP lint-shell: no shell scripts in the repository"; exit 0; fi; \
-	echo "shellcheck: $$files"; \
-	$(DOCKER_RUN) $(SHELLCHECK_IMAGE) --severity=warning --external-sources $$files
-
-lint-actions:
-	@if ! compgen -G ".github/workflows/*.y*ml" >/dev/null; then echo "SKIP lint-actions: no workflows"; exit 0; fi; \
-	$(DOCKER_RUN) $(ACTIONLINT_IMAGE) -color
-
-lint-markdown:
-	$(DOCKER_RUN) $(MARKDOWNLINT_IMAGE) "**/*.md"
-
-# The validator's own tests always run. Validation of the real manifests is
-# skipped (explicitly) only while Agent B's files do not exist.
-validate-manifest:
-	tests/manifest/run.sh python3 -m unittest discover -b -s tests/manifest -p 'test_*.py'
-	@if [[ ! -f "$(APP_DIR)/config.yaml" ]]; then echo "SKIP validate-manifest: $(APP_DIR)/config.yaml does not exist yet (validator self-tests ran)"; exit 0; fi; \
-	tests/manifest/run.sh python3 tests/manifest/validate.py --repo . --app "$(APP_DIR)" $(MANIFEST_FLAGS)
-
-# Test files are passed explicitly: `node --test <directory>` means different
-# things on Node 20 and Node 22+, explicit files behave the same everywhere.
-UNIT_TESTS = $(wildcard tests/unit/*.test.mjs tests/unit/*.test.js tests/unit/*.test.cjs)
-test-unit:
-	@if [[ -z "$(UNIT_TESTS)" ]]; then echo "SKIP test-unit: no tests/unit/*.test.{mjs,js,cjs} files yet"; exit 0; fi; \
-	echo "node --test $(UNIT_TESTS)"; \
-	timeout --signal=TERM --kill-after=10 $(UNIT_TIMEOUT) node --test $(UNIT_TESTS) || { rc=$$?; \
-	  if [[ $$rc -eq 124 || $$rc -eq 137 ]]; then echo "FAIL test-unit: did not finish within $(UNIT_TIMEOUT)s (a test keeps the event loop alive?)"; fi; exit $$rc; }
-
-# Directory mode: scans the working tree as files, so it works with an empty
-# git history. --redact keeps any finding out of terminal and CI logs.
-scan-secrets:
-	$(DOCKER_RUN) $(GITLEAKS_IMAGE) dir --no-banner --redact --config .gitleaks.toml .
+test:
+	node --test tests/unit/*.test.mjs
 
 build:
-	@if [[ ! -f "$(APP_DIR)/Dockerfile" ]]; then echo "FAIL build: $(APP_DIR)/Dockerfile does not exist"; exit 1; fi
-	docker build --platform "$(PLATFORM)" -t "$(LOCAL_IMAGE)" "$(APP_DIR)"
+	docker build -t $(IMAGE) live-mesh-map
 
-# LMM_IMAGE=<ref> tests an existing image instead of building one.
-test-integration:
-	@if [[ -z "$${LMM_IMAGE:-}" ]]; then $(MAKE) --no-print-directory build; fi
-	LMM_IMAGE="$${LMM_IMAGE:-$(LOCAL_IMAGE)}" tests/integration/run.sh $(TESTS)
+test-ingress: build
+	LMM_IMAGE=$(IMAGE) tests/ingress/run.sh
 
-test-ingress:
-	@if [[ -z "$${LMM_IMAGE:-}" ]]; then $(MAKE) --no-print-directory build; fi
-	LMM_IMAGE="$${LMM_IMAGE:-$(LOCAL_IMAGE)}" tests/ingress/run.sh
-
-# Evidence run: the unmodified upstream image has no Ingress support, so this
-# is EXPECTED to report prefix escapes. It proves the harness detects them.
-test-ingress-baseline:
-	LMM_IMAGE="$(UPSTREAM_IMAGE)" LMM_APP_PORT=8095 LMM_MODE=baseline tests/ingress/run.sh
-
-pull-tools:
-	@for i in $(YAMLLINT_IMAGE) $(HADOLINT_IMAGE) $(SHELLCHECK_IMAGE) $(ACTIONLINT_IMAGE) \
-	  $(MARKDOWNLINT_IMAGE) $(GITLEAKS_IMAGE); do docker pull -q "$$i"; done
-
-clean:
-	@tests/lib/cleanup.sh all
+update:
+	node scripts/update-upstream.mjs
+	$(MAKE) test test-ingress

@@ -1,7 +1,7 @@
 // Translation of Home Assistant App options into the environment expected by
 // Live Mesh Map World. Pure functions only: no file, network or process access.
 //
-// Upstream facts this module relies on (verified against v1.5.14):
+// Upstream facts this module relies on :
 //   * carte-live/src/config.js accepts yes/no/true/false through an alias
 //     table, but carte-live/src/domotique.js compares DOMOTIQUE_DECOUVERTE and
 //     DOMOTIQUE_ENVOI_LORA with the literal string "oui". Booleans are
@@ -238,4 +238,19 @@ export function redact(env) {
 // Removes user:password@ from anything that looks like a URL inside a text.
 export function redactText(s) {
   return String(s).replace(/([a-z][a-z0-9+.-]*:\/\/)[^\s/@]*@/gi, '$1***@');
+}
+
+// Upstream applies the settings saved from the map (reglages.json, field
+// "variables") over its environment at every start, so an administrator of
+// the map can replace values set by this App. Returns the names (never the
+// values) of the variables of env that such saved settings replace with a
+// different value. settings is the parsed reglages.json, or null.
+export function overriddenByMapSettings(env, settings) {
+  const saved = settings && typeof settings === 'object' && settings.variables && typeof settings.variables === 'object' && !Array.isArray(settings.variables) ? settings.variables : {};
+  const names = [];
+  for (const [name, value] of Object.entries(saved)) {
+    if (value === null || value === undefined) continue;
+    if (Object.hasOwn(env || {}, name) && String(value) !== String(env[name])) names.push(name);
+  }
+  return names.sort();
 }

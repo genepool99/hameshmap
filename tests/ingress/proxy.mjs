@@ -16,7 +16,7 @@
 //   * WebSocket upgrades below the prefix are tunnelled;
 //   * cookies pass through unchanged in both directions.
 //
-// Known differences from the real thing (see docs/testing/test-plan.md):
+// Differences from Home Assistant:
 // no Home Assistant authentication or ingress session cookie, no frontend
 // iframe, plain HTTP, raw TCP tunnelling of WebSockets instead of message
 // re-framing, no 16 MiB WebSocket message limit, no response re-compression.

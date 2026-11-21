@@ -1,7 +1,4 @@
 ---
 name: Live Mesh Map App repository
-# PLACEHOLDERS - to be set by the repository owner before publishing:
-#   url:        public address of this repository
-#   maintainer: contact shown in the Home Assistant App store
-# url: https://example.invalid/REPLACE-WITH-REPOSITORY-URL
-# maintainer: REPLACE WITH MAINTAINER NAME <contact@example.invalid>
+# url: address of this repository
+# maintainer: name shown in the Home Assistant App store
