@@ -1,0 +1,35 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "MeshMap",
+        "description": "Add a sidebar map of the contacts of your MeshCore integration."
+      }
+    },
+    "abort": {
+      "meshcore_not_configured": "Set up the MeshCore integration first, then add MeshMap.",
+      "single_instance_allowed": "MeshMap is already set up."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "MeshMap options",
+        "data": {
+          "entries": "MeshCore companions",
+          "stale_after_hours": "Mark nodes stale after",
+          "refresh_seconds": "Contact refresh interval",
+          "tile_url": "Map tile URL",
+          "tile_attribution": "Map tile attribution"
+        },
+        "data_description": {
+          "entries": "Leave empty to show all companions, including ones added later.",
+          "tile_url": "A URL template with the z, x and y placeholders in braces, as in the default."
+        }
+      }
+    },
+    "error": {
+      "invalid_tile_url": "Enter an http(s) URL that contains the z, x and y placeholders in braces."
+    }
+  }
+}

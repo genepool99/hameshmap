@@ -1,0 +1,42 @@
+{
+  "version": "0.2",
+  "language": "en",
+  "ignorePaths": [
+    "custom_components/meshcore_map/frontend/meshcore-map-panel.js",
+    "frontend/package-lock.json",
+    "frontend/node_modules",
+    "LICENSE",
+    ".git"
+  ],
+  "words": [
+    "asyncio",
+    "autouse",
+    "cacheprovider",
+    "caplog",
+    "genepool",
+    "hacs",
+    "hameshmap",
+    "hass",
+    "hassfest",
+    "homeassistant",
+    "licence",
+    "linecap",
+    "meshcore",
+    "noopener",
+    "noreferrer",
+    "normalise",
+    "openstreetmap",
+    "prefixless",
+    "pycache",
+    "pytest",
+    "PYTHONDONTWRITEBYTECODE",
+    "pythonpath",
+    "testpaths",
+    "unsub",
+    "unsubs",
+    "venv"
+  ],
+  "ignoreRegExpList": [
+    "\\b[0-9a-f]{6,}\\b"
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "domain": "meshcore_map",
+  "name": "MeshMap",
+  "codeowners": ["@genepool99"],
+  "config_flow": true,
+  "dependencies": ["frontend", "http", "websocket_api", "meshcore"],
+  "documentation": "https://github.com/genepool99/hameshmap",
+  "integration_type": "service",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/genepool99/hameshmap/issues",
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "0.1.0"
+}

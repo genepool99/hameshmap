@@ -1,23 +1,20 @@
-# make test          unit tests (needs Node.js 22 or newer)
-# make build         builds the App image local/live-mesh-map:dev
-# make test-ingress  builds the image and runs the browser tests below an
-#                    Ingress-style path prefix (needs docker)
-# make update        moves to the latest Live Mesh Map World release, then
-#                    runs the tests
+# make test      Python tests (docker) and panel tests (Node.js 22 or newer)
+# make frontend  rebuilds custom_components/meshcore_map/frontend/meshcore-map-panel.js
+# make lint      ruff on the Python code (docker)
 
-IMAGE ?= local/live-mesh-map:dev
+.PHONY: test test-python test-frontend frontend lint
 
-.PHONY: test build test-ingress update
+test: test-python test-frontend
 
-test:
-	node --test tests/unit/*.test.mjs
+test-python:
+	docker run --rm -e PYTHONDONTWRITEBYTECODE=1 -v "$(CURDIR)":/repo:ro -w /repo python:3.14-slim \
+	  sh -c "pip install -q --root-user-action=ignore -r requirements_test.txt && python -m pytest -q -p no:cacheprovider tests"
 
-build:
-	docker build -t $(IMAGE) live-mesh-map
+test-frontend:
+	cd frontend && npm test
 
-test-ingress: build
-	LMM_IMAGE=$(IMAGE) tests/ingress/run.sh
+frontend:
+	cd frontend && npm ci && npm run build
 
-update:
-	node scripts/update-upstream.mjs
-	$(MAKE) test test-ingress
+lint:
+	docker run --rm -v "$(CURDIR)":/repo:ro -w /repo ghcr.io/astral-sh/ruff:0.14.5 check --no-cache custom_components tests

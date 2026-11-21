@@ -1,4 +1,4 @@
-# AGENTS.md — Live Mesh Map World Home Assistant App
+# AGENTS.md — MeshMap
 
 Instructions for every AI agent (coordinator or subagent) and every automated
 tool working in this repository. They persist across sessions. Read this file
@@ -34,55 +34,56 @@ only.
 
 ## 2. What this project is
 
-A personal project, shared publicly: a Home Assistant App (formerly "add-on")
-that packages
-[Live Mesh Map World](https://github.com/sauveteur71/live-mesh-map-world)
-(GPL-3.0, Node.js) to run under Home Assistant Supervisor, with Ingress and
-MQTT Discovery. It is a thin layer on a pinned upstream image, not a fork.
+MeshMap: a Home Assistant custom integration (`custom_components/meshcore_map/`),
+installed through the Home Assistant Marketplace, that shows the contacts of
+the [MeshCore integration](https://github.com/meshcore-dev/meshcore-ha) on a
+map in a sidebar panel. It is a companion to that integration and has no
+server, container, database or radio connection of its own. A personal
+project, shared publicly.
 
 ## 3. Engineering rules
 
-1. Keep it small. The only documents are `README.md` (install instructions),
-   `live-mesh-map/DOCS.md` (shown in Home Assistant), `live-mesh-map/NOTICE.md`
-   and `live-mesh-map/CHANGELOG.md`. Do not add design documents, decision
-   records, test plans, policies or checklists.
-2. Documentation and code comments are instructions or descriptions of what
-   the code does. No rationale essays, status reports, roadmaps or product
-   discussion.
-3. Tests: `tests/unit/` (dependency-free `node:test`) and `tests/ingress/`
-   (browser test below a path prefix). Do not add further test layers or lint
-   tooling unless asked.
-4. Do not invent APIs or assume behavior. Verify against upstream source at
-   the pinned version and against current Home Assistant developer docs.
-5. Never report something as working unless it was verified.
-6. Never log secrets, MQTT credentials, message content or location data.
-7. No privileged container, `full_access`, `docker_api`, Docker socket, host
-   networking or host mounts. Never reproduce upstream's Docker-socket updater.
-8. LoRa transmission from MQTT (`DOMOTIQUE_ENVOI_LORA`) stays off by default.
-9. Never remove or recreate user data under `/data` during startup.
-10. The upstream version is pinned by version and digest in
-    `live-mesh-map/Dockerfile`; `make update` changes it. Never use `latest`.
+1. Use only the surface documented in MeshCore HA's
+   [companion integration API](https://github.com/meshcore-dev/meshcore-ha/blob/main/docs/docs/companion-integration-api.md):
+   its events, services and entity ID formats. Never read
+   `hass.data["meshcore"]`, the coordinator or the API session, and never open
+   a MeshCore connection.
+2. Passive only. Never call `meshcore.trace`, `meshcore.send_message`,
+   `meshcore.send_channel_message` or `meshcore.execute_command` unless the
+   user starts that action.
+3. Show only what the data supports. Never invent locations, links, coverage
+   or signal values. A route whose hops cannot be matched to known nodes is
+   shown as unresolved.
+4. Filter every MeshCore event on `entry_id`.
+5. Keep it small. The only documents are `README.md` and `CHANGELOG.md`. Do
+   not add design documents, decision records, test plans or checklists.
+6. Documentation and code comments are instructions or descriptions of what
+   the code does. No rationale essays, status reports or product discussion.
+7. Do not copy code from other projects. MeshCore HA and MeshCore HA Chat are
+   references for behavior and structure only.
+8. Never report something as working unless it was verified.
+9. Do not log message text, public keys or coordinates.
 
 ## 4. Owner's server
 
 Do not assume access. No action on the owner's server without explicit
-authorization. Start read-only. Before installing, upgrading, restarting, or
-changing any service, explain the change, affected service, downtime/risk,
-backup needs, and rollback, then wait for approval. Never copy private keys
-into the repository.
+authorization. Start read-only. Before installing, restarting, or changing
+anything, explain the change, what it affects, and how to undo it, then wait
+for approval. Never change the MeshCore integration's configuration or its
+radio connection. Never copy private keys into the repository.
 
 ## 5. Layout
 
 | Path | Purpose |
 | --- | --- |
-| `repository.yaml`, `live-mesh-map/` | The App: manifest, Dockerfile, startup code, translations |
-| `live-mesh-map/build/relativize.mjs` | Build-time rewrite of the upstream web UI to relative URLs |
-| `scripts/update-upstream.mjs` | `make update` |
-| `tests/unit/`, `tests/ingress/` | Tests |
+| `custom_components/meshcore_map/*.py` | The integration: config flow, MeshCore data collection, WebSocket API, panel registration |
+| `custom_components/meshcore_map/model.py` | Data model and route resolution, without Home Assistant imports |
+| `custom_components/meshcore_map/frontend/meshcore-map-panel.js` | Built panel bundle, generated from `frontend/` |
+| `frontend/` | Panel source and its tests |
+| `tests/` | Python tests |
+| `hacs.json` | Marketplace metadata |
 
 ## 6. Checks
 
-Run `make test` after changes, and `make test-ingress` after changes to the
-Dockerfile, `relativize.mjs`, `ingress.mjs` or the upstream version. Name test
-containers `lmm-test-*`, bind ports to `127.0.0.1` only, and remove what you
-start.
+Run `make test` after changes. Rebuild the panel bundle with `make frontend`
+after changing `frontend/src/`.
